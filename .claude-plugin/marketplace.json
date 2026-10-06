@@ -1,0 +1,11 @@
+{
+  "name": "claude-mods",
+  "description": "Mods for Claude Code: delegation rules, prompt tools, turn rules and a context saver.",
+  "owner": { "name": "MahadSalim" },
+  "plugins": [
+    { "name": "agent-rules", "source": "./agent-rules" },
+    { "name": "prompt-tools", "source": "./prompt-tools" },
+    { "name": "turn-rules", "source": "./turn-rules" },
+    { "name": "context-saver", "source": "./context-saver" }
+  ]
+}

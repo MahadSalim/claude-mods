@@ -1,0 +1,6 @@
+{
+  "name": "context-saver",
+  "version": "0.1.0",
+  "description": "Refuses a main-agent Read over the token cap so a subagent reads the file and reports back. Reads its toggle and settings from agent-rules.",
+  "dependencies": ["agent-rules"]
+}

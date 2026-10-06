@@ -1,0 +1,6 @@
+{
+  "name": "prompt-tools",
+  "version": "0.1.0",
+  "description": "Rewrites a typed prompt with Haiku and appends saved snippets to it. Reads its toggles and settings from agent-rules.",
+  "dependencies": ["agent-rules"]
+}

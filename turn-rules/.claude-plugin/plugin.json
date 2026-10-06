@@ -1,0 +1,6 @@
+{
+  "name": "turn-rules",
+  "version": "0.1.0",
+  "description": "Sends questions through AskUserQuestion and keeps a turn going while the task list has open tasks. Reads its toggles and settings from agent-rules.",
+  "dependencies": ["agent-rules"]
+}
