@@ -1,17 +1,24 @@
-import { read } from 'claude-code'
-import type { Register } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
 
-const CONFIG = { plugin: 'agent-rules', key: 'config' } as const
+type Options = { isOn: boolean; ctx: number; slices: boolean }
 
 const BYTES_PER_TOKEN = 4
 // Files the Read tool does not return as text.
 const NOT_TEXT = /\.(png|jpe?g|gif|webp|bmp|pdf|ipynb)$/i
 
-export const register: Register = on => {
-  on('tool.call', { tool: 'Read' }, async ($, e, next) => {
-    const c = await read($, CONFIG)
+/** Whether the agent-delegation mod is on in its No subagents mode. */
+const hasNoSubagents = async ($: EngineInterface) => {
+  const rows = await $.config.list().catch(() => [])
+  const held = (field: string) => rows.find(row => row.key === `agent-delegation.${field}`)?.value
 
-    if (!c?.on.context || c.mode === 'noSubagents' || e.agentId !== undefined || NOT_TEXT.test(e.file_path)) {
+  return held('isOn') === true && held('mode') === 'No subagents'
+}
+
+export const register: Register = (on, options) => {
+  const c = options as Options
+
+  on('tool.call', { tool: 'Read' }, async ($, e, next) => {
+    if (!c.isOn || e.agentId !== undefined || NOT_TEXT.test(e.file_path) || (await hasNoSubagents($))) {
       return next(e)
     }
 

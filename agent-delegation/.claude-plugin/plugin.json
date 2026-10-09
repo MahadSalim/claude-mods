@@ -1,0 +1,43 @@
+{
+  "name": "agent-delegation",
+  "version": "0.1.0",
+  "description": "The delegation mode, subagent cap and model routing.",
+  "userConfig": {
+    "isOn": { "type": "boolean", "title": "On", "description": "Applies the mode, the cap and the model routing.", "default": true },
+    "mode": {
+      "type": "string",
+      "title": "Mode",
+      "description": "Default: the main agent chooses when to delegate. Orchestrator: it delegates all work. No subagents: no new subagents.",
+      "default": "Default",
+      "options": ["Default", "Orchestrator", "No subagents"]
+    },
+    "open": {
+      "type": "string",
+      "title": "Orchestrator may call",
+      "description": "Tools the main agent may call in Orchestrator mode, separated by commas. Agent and Tasks each stand for their group of tools.",
+      "default": "Agent, SendMessage, AskUserQuestion, Tasks, Skill, ToolSearch"
+    },
+    "cap": { "type": "number", "title": "Subagent cap", "description": "Subagents one session may start. 0 is no cap.", "default": 4, "min": 0, "max": 12 },
+    "reader": {
+      "type": "string",
+      "title": "Reader model",
+      "description": "The model of the reader agent.",
+      "default": "haiku",
+      "options": ["inherit", "haiku", "sonnet", "opus"]
+    },
+    "editor": {
+      "type": "string",
+      "title": "Editor model",
+      "description": "The model of the editor agent.",
+      "default": "sonnet",
+      "options": ["inherit", "haiku", "sonnet", "opus"]
+    },
+    "other": {
+      "type": "string",
+      "title": "Other model",
+      "description": "The model of every other subagent.",
+      "default": "inherit",
+      "options": ["inherit", "haiku", "sonnet", "opus"]
+    }
+  }
+}

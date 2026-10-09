@@ -1,0 +1,5 @@
+{
+  "name": "context-bar",
+  "version": "0.1.0",
+  "description": "A bar above the prompt that fills as the context window fills."
+}

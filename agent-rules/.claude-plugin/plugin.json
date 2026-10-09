@@ -1,6 +1,0 @@
-{
-  "name": "agent-rules",
-  "version": "0.1.0",
-  "description": "The delegation mode, subagent cap and model routing, plus the Mods button and pane whose settings the other mods read.",
-  "types": "./types/index.d.ts"
-}

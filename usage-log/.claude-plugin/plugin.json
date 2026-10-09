@@ -1,0 +1,5 @@
+{
+  "name": "usage-log",
+  "version": "0.1.0",
+  "description": "Logs plan readings, context fill, engine cost, turn outcomes and tool timing per session for the usage dashboard."
+}

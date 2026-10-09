@@ -1,7 +1,6 @@
-import { read } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-const CONFIG = { plugin: 'agent-rules', key: 'config' } as const
+type Options = { ask: boolean; hint: boolean; tasks: boolean }
 
 const MAX_BLOCKS = 3
 const ASK_HINT = 'When you need an answer from the user, call the AskUserQuestion tool. Do not end a reply with a question.'
@@ -21,22 +20,21 @@ const openTasks = async ($: EngineInterface) => {
     : undefined
 }
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  const c = options as Options
+  const hints = [...(c.ask && c.hint ? [ASK_HINT] : []), ...(c.tasks ? [TASK_HINT] : [])]
   // Turn ends this mod refused since the last prompt.
   let blocks = 0
 
-  on('prompt.submit', async ($, e, next) => {
+  on('prompt.submit', ($, e, next) => {
     blocks = 0
-    const c = await read($, CONFIG)
-    const hints = [c?.on.ask && c.hint && ASK_HINT, c?.on.tasks && TASK_HINT].filter(hint => typeof hint === 'string')
 
     return next(hints.length ? { ...e, context: [...(e.context ?? []), ...hints] } : e)
   })
 
   on('classic.Stop', async ($, e, next) => {
-    const c = await read($, CONFIG)
     const asks = (e.last_assistant_message ?? '').trimEnd().endsWith('?')
-    const block = blocks >= MAX_BLOCKS ? undefined : c?.on.ask && asks ? ASK_BLOCK : c?.on.tasks && !asks ? await openTasks($) : undefined
+    const block = blocks >= MAX_BLOCKS ? undefined : c.ask && asks ? ASK_BLOCK : c.tasks && !asks ? await openTasks($) : undefined
 
     if (!block) {
       return next(e)
