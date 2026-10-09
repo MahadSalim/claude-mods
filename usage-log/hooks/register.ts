@@ -2,24 +2,29 @@ import type { EngineInterface, Register } from 'claude-code'
 
 // Characters one log file holds before the next file starts.
 const FILE_CHARS = 64_000
-// The dashboard's log folder, from the plugin's root.
-const EVENTS = '../../dashboard/data/events'
+// The dashboard's log folder, from the Claude config folder.
+const EVENTS = 'usage-log/events'
 
 type Log = { id: string; path: string; text: string; written: number }
 
 /** The plan windows, context fill and engine cost at this moment. */
 const usage = ($: EngineInterface) => $.session.usage().catch(() => undefined)
 
+/** The Claude config folder: CLAUDE_CONFIG_DIR, or .claude under the home folder. */
+const configDir = async ($: EngineInterface) =>
+  (await $.env.get('CLAUDE_CONFIG_DIR')) || `${(await $.env.get('USERPROFILE')) || (await $.env.get('HOME'))}/.claude`
+
+let config: Promise<string> | undefined
 let log: Log | undefined
 let files = 0
 let writing = Promise.resolve()
 
 /** Adds one row to the session's log file. */
 const record = async ($: EngineInterface, ev: string, fields: object) => {
-  const [id, at] = await Promise.all([$.session.id(), $.clock.now()])
+  const [id, at, root] = await Promise.all([$.session.id(), $.clock.now(), (config ??= configDir($))])
 
   if (log?.id !== id || log.text.length > FILE_CHARS) {
-    log = { id, path: `${$.plugin.root}/${EVENTS}/${id}.${at}-${files++}.jsonl`, text: '', written: 0 }
+    log = { id, path: `${root}/${EVENTS}/${id}.${at}-${files++}.jsonl`, text: '', written: 0 }
   }
 
   const file = log

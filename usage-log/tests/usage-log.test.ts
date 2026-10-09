@@ -20,6 +20,7 @@ const world = (on: On) => {
   const files: Record<string, string> = {}
   const session = { id: 's1' }
   mock.clock(on, { now: 1000 })
+  mock.env(on, { CLAUDE_CONFIG_DIR: 'C:/cfg' })
   on('fs.write', ($, e) => ((files[e.path.replaceAll('\\', '/')] = e.text), { value: undefined }))
   on('session.id', () => ({ value: session.id }))
   on('session.usage', () => ({ value: USAGE }) as never)
@@ -54,7 +55,7 @@ test('a turn logs its plan readings before and after, and its outcome', async ($
   await $.turn.complete({ answer: '', durationMs: 10, isAborted: true, turnId: 'turn2', agentId: 'sub', reason: 'aborted' })
 
   const [started, before, after, aborted] = rows(files, 's1')
-  expect(Object.keys(files)).toEqual([expect.stringMatching('/dashboard/data/events/s1.1000-0.jsonl$')])
+  expect(Object.keys(files)).toEqual(['C:/cfg/usage-log/events/s1.1000-0.jsonl'])
   expect(started).toEqual(expect.objectContaining({ at: 1000, ev: 'session.start', cwd: 'C:/work', model: 'claude-opus-5-5', version: '2.1.293' }))
   expect(before).toEqual(expect.objectContaining({ ev: 'turn.start', turnId: 'turn1', usage: USAGE }))
   expect(after).toEqual(expect.objectContaining({ ev: 'turn.end', turnId: 'turn1', reason: 'answer', durationMs: 4200, usage: USAGE }))

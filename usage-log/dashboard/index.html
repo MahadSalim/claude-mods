@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code usage</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --page: #eef2ec; --surface: #f7f9f5; --ink: #16211b; --ink2: #4c5b52;
+  --rule: #d3dbd2; --rule2: #a9b5ab; --wash: rgba(22,33,27,.06);
+  --accent: #1b6b4a; --critical: #b3312b;
+  --s1: #1b6b4a; --s2: #2f62b0; --s3: #c25a26; --s4: #a67a0a;
+  --din: Bahnschrift, "DIN Alternate", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #101613; --surface: #17201b; --ink: #e2eae4; --ink2: #a5b4aa;
+    --rule: #25302a; --rule2: #3b4a41; --wash: rgba(226,234,228,.07);
+    --accent: #5dbb8f; --critical: #f0776c;
+    --s1: #5dbb8f; --s2: #6c9be6; --s3: #e2824c; --s4: #d2a93a;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 var(--din); }
+html { accent-color: var(--accent); caret-color: var(--accent); scrollbar-color: var(--rule2) transparent; }
+::selection { background: var(--accent); color: var(--page); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+a { color: var(--accent); text-underline-offset: 3px; }
+header, #filters, main { max-width: 1500px; margin: 0 auto; padding: 0 20px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; padding-top: 14px; }
+h1 { font-size: 18px; font-weight: 600; margin: 0; }
+h1.title { font-size: 22px; margin: 8px 0 6px; overflow-wrap: anywhere; }
+h2 { font-size: 15px; font-weight: 600; margin: 0 0 10px; }
+nav { display: flex; flex-wrap: wrap; gap: 2px; flex: 1; }
+nav a { padding: 6px 10px; border-bottom: 2px solid transparent; color: var(--ink2); text-decoration: none; }
+nav a:hover { color: var(--ink); }
+nav a[aria-current] { color: var(--ink); border-color: var(--accent); }
+tr.click:hover, button:hover { background: var(--wash); }
+#filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 12px; }
+button, select, input { font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--rule2); border-radius: 6px; padding: 4px 12px; min-height: 32px; transition: background-color .15s; }
+button { cursor: pointer; }
+button:active { transform: translateY(1px); }
+button[aria-pressed=true] { background: var(--ink); color: var(--page); border-color: var(--ink); }
+.seg { display: inline-flex; }
+.seg button { border-radius: 0; margin-left: -1px; }
+.seg button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+.seg button:last-child { border-radius: 0 6px 6px 0; }
+.field { display: grid; gap: 4px; width: 280px; max-width: 100%; margin-bottom: 12px; color: var(--ink2); font-size: 12.5px; }
+.field input { font-size: 14px; color: var(--ink); }
+main { padding-top: 22px; padding-bottom: 48px; display: grid; gap: 28px; transition: opacity .15s; }
+main > * { min-width: 0; }
+.busy main { opacity: .5; }
+.block { border-top: 1px solid var(--rule2); padding-top: 12px; min-width: 0; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 28px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 18px 0; }
+.tile { border-left: 1px solid var(--rule2); padding: 0 16px; display: grid; gap: 2px; align-content: start; min-width: 0; }
+.tile span, .tile small, .dim, .meta, .meter > span, .read span { color: var(--ink2); }
+.tile b { font-size: 26px; font-weight: 500; font-stretch: 87.5%; line-height: 1.15; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.tile small, .meta { font-size: 12.5px; }
+.meta { overflow-wrap: anywhere; margin: 0; }
+.meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr)); gap: 24px 48px; }
+.read { display: flex; align-items: baseline; gap: 8px; margin: 2px 0 10px; }
+.read b { font-size: 52px; font-weight: 600; font-stretch: 75%; line-height: 1; font-variant-numeric: tabular-nums; }
+.scale { position: relative; height: 20px; border-bottom: 1px solid var(--ink2); border-right: 1px solid var(--ink2);
+  background: linear-gradient(90deg, var(--ink2) 1px, transparent 1px) 0 0 / 25% 100% repeat-x,
+    linear-gradient(90deg, var(--rule2) 1px, transparent 1px) 0 100% / 5% 7px repeat-x; }
+.scale i { position: absolute; left: 0; bottom: 0; height: 9px; min-width: 2px; background: var(--accent); }
+.scale i::after { content: ""; position: absolute; right: 0; bottom: 0; width: 2px; height: 20px; background: var(--ink); }
+.hot .scale i { background: var(--critical); }
+.hot .read span { color: var(--critical); font-weight: 600; }
+.stale .scale i { background: var(--rule2); }
+.stale .read b { color: var(--ink2); }
+.ticks { display: grid; grid-template-columns: repeat(4, 1fr) 0; margin: 3px 0 6px; font-size: 12px; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.ticks span { padding-left: 3px; }
+.ticks span:last-child { justify-self: end; padding: 0 3px 0 0; }
+.facts { display: flex; flex-wrap: wrap; gap: 2px 24px; margin: 0; font-size: 13px; }
+.facts dt, .facts dd { display: inline; margin: 0; overflow-wrap: anywhere; }
+.facts dt { color: var(--ink2); margin-right: 6px; }
+.tw { overflow-x: auto; margin-inline: -10px; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--rule); white-space: nowrap; max-width: 380px; overflow: hidden; text-overflow: ellipsis; }
+th { color: var(--ink2); font-weight: 600; font-size: 12.5px; border-bottom-color: var(--ink2); user-select: none; }
+th.sortable { cursor: pointer; }
+th.sortable:hover { color: var(--ink); }
+th[aria-sort=ascending]::after, th[aria-sort=descending]::after { content: ""; display: inline-block; margin-left: 6px; vertical-align: 2px; border: 4px solid transparent; }
+th[aria-sort=ascending]::after { border-top: 0; border-bottom-color: currentColor; }
+th[aria-sort=descending]::after { border-bottom: 0; border-top-color: currentColor; }
+th:focus-visible, tr:focus-visible { outline-offset: -2px; }
+.num { text-align: right; }
+td.num { font-stretch: 87.5%; }
+tr.click { cursor: pointer; }
+.more { margin: 8px 10px 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 6px; font-size: 12.5px; color: var(--ink2); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; }
+svg { display: block; }
+svg text { font-size: 11.5px; fill: var(--ink2); font-variant-numeric: tabular-nums; }
+svg text.val { fill: var(--ink); }
+svg text.cat { font-size: 12.5px; }
+.grid { stroke: var(--rule); }
+.base { stroke: var(--rule2); }
+.line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.dot { stroke: var(--page); stroke-width: 2; }
+.hover { pointer-events: none; }
+.hover rect { fill: var(--wash); }
+#tip { position: fixed; z-index: 9; pointer-events: none; background: var(--surface); border: 1px solid var(--rule2); border-radius: 6px; padding: 6px 10px; font-size: 12.5px; box-shadow: 0 6px 18px rgba(16,22,19,.22); color: var(--ink2); }
+#tip b { display: block; color: var(--ink); margin-bottom: 2px; }
+#tip strong { color: var(--ink); }
+#tip i { display: inline-block; width: 10px; height: 2px; vertical-align: middle; margin-right: 6px; }
+pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px/1.5 "Cascadia Code", ui-monospace, Consolas, monospace; }
+.msg { border-top: 1px solid var(--rule); padding: 10px 0; display: grid; gap: 6px; }
+.msg.user { background: var(--wash); border-radius: 6px; padding: 10px; }
+.msg .meta { display: flex; flex-wrap: wrap; gap: 2px 14px; }
+.msg .meta b { color: var(--ink); }
+details > pre { padding: 8px; background: var(--wash); border-radius: 6px; margin-top: 4px; max-height: 420px; overflow: auto; }
+summary { cursor: pointer; color: var(--ink2); font-size: 12.5px; }
+details.dim { opacity: .8; }
+details.err > summary, .err { color: var(--critical); font-weight: 600; }
+[hidden] { display: none !important; }
+@media (max-width: 760px) {
+  nav { order: 3; flex-basis: 100%; flex-wrap: nowrap; overflow-x: auto; }
+  nav a { white-space: nowrap; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } button:active { transform: none; } }
+</style>
+</head>
+<body>
+<header><h1>Claude Code usage</h1><nav id="nav"></nav><span id="stamp" class="meta"></span><button id="refresh">Refresh</button></header>
+<div id="filters"></div>
+<main id="main"></main>
+<div id="tip" hidden></div>
+<script>
+const NS = 'http://www.w3.org/2000/svg';
+const KEYS = ['requests', 'input', 'output', 'cacheWrite', 'cacheRead', 'cost', 'p5', 'p7'];
+const C = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)'];
+const ROUTES = [['', 'Overview'], ['plan', 'Plan usage'], ['sessions', 'Sessions'], ['agents', 'Agents'], ['tools', 'Tools'], ['models', 'Models and projects'], ['cost', 'Cost']];
+const state = { range: 30, project: '', q: '' };
+const draws = [];
+let data, seq = 0;
+
+// HTML element builder; string children become text nodes
+const h = (tag, a = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(a)) if (v != null && v !== false) k.startsWith('on') ? e.addEventListener(k.slice(2), v) : k in e ? e[k] = v : e.setAttribute(k, v);
+  e.append(...kids.flat(Infinity).filter(k => k != null && k !== false));
+  return e;
+};
+// SVG element builder
+const svg = (tag, a = {}, text) => {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(a)) e.setAttribute(k, v);
+  if (text != null) e.textContent = text;
+  return e;
+};
+const $ = id => document.getElementById(id);
+
+// Formatters
+const guard = f => (n, ...r) => Number.isFinite(n) ? f(n, ...r) : '–';
+const fmt = {
+  int: guard(n => Math.round(n).toLocaleString('en-US')),
+  num: guard(n => { const a = Math.abs(n), u = a >= 1e9 ? [1e9, 'B'] : a >= 1e6 ? [1e6, 'M'] : a >= 1e3 ? [1e3, 'K'] : [1, '']; return +(n / u[0]).toFixed(a / u[0] >= 100 ? 0 : a / u[0] >= 10 ? 1 : 2) + u[1]; }),
+  usd: guard(n => { const d = n && Math.abs(n) < 0.01 ? 4 : 2; return (n < 0 ? '-$' : '$') + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }); }),
+  pct: guard(n => +n.toFixed(Math.abs(n) < 10 ? 2 : 1) + '%'),
+  dur: guard(ms => ms < 1e3 ? Math.round(ms) + 'ms' : ms < 6e4 ? (ms / 1e3).toFixed(1) + 's' : ms < 36e5 ? `${Math.floor(ms / 6e4)}m ${Math.floor(ms % 6e4 / 1e3)}s` : ms < 864e5 ? `${Math.floor(ms / 36e5)}h ${Math.floor(ms % 36e5 / 6e4)}m` : `${Math.floor(ms / 864e5)}d ${Math.floor(ms % 864e5 / 36e5)}h`),
+  date: guard(ms => new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })),
+  day: d => new Date(d + 'T00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+  signed: n => (n > 0 ? '+' : '') + fmt.usd(n),
+};
+
+// Aggregation helpers
+const sum = (rows, f) => rows.reduce((t, r) => t + (f(r) || 0), 0);
+const tok = o => o.input + o.output + o.cacheWrite + o.cacheRead;
+const agg = rows => { const o = Object.fromEntries(KEYS.map(k => [k, 0])); for (const r of rows) for (const k of KEYS) o[k] += r[k] || 0; o.tokens = tok(o); return o; };
+const groupBy = (rows, f) => { const m = new Map(); for (const r of rows) { const k = f(r); m.has(k) ? m.get(k).push(r) : m.set(k, [r]); } return m; };
+const rollup = (rows, f) => [...groupBy(rows, f)].map(([name, rs]) => ({ name: name ?? '(none)', n: rs.length, rs, ...agg(rs) }));
+const dayOf = ms => { const d = new Date(ms); return new Date(ms - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
+const get = async u => { const r = await fetch(u); if (!r.ok) throw new Error(`${u} returned ${r.status}`); return r.json(); };
+
+// Sessions and buckets inside the active date range and project
+function scope() {
+  const cut = state.range ? dayOf(Date.now() - (state.range - 1) * 864e5) : '';
+  const sessions = data.sessions.filter(s => !state.project || s.project === state.project)
+    .map(s => { const b = s.usage.filter(u => u.day >= cut); return { s, b, t: agg(b) }; }).filter(x => x.b.length || !cut);
+  return { cut, cutMs: cut ? new Date(cut + 'T00:00').getTime() : 0, sessions, buckets: sessions.flatMap(x => x.b.map(b => ({ ...b, s: x.s }))) };
+}
+
+const card = (title, ...kids) => h('section', { className: 'block' }, title && h('h2', {}, title), kids);
+const tiles = list => h('div', { className: 'tiles' }, list.map(([k, v, note]) => h('div', { className: 'tile' }, h('span', {}, k), h('b', {}, v), note && h('small', {}, note))));
+// Keyboard handler that runs f on Enter or Space
+const key = f => e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); f(); } };
+const NONE = 'Nothing in this range. Widen the date range or clear the project filter.';
+
+// Plan window gauges from the latest readings
+const meters = () => card('Plan limits, all projects', h('div', { className: 'meters' }, [['5-hour window', data.plan.fiveHour], ['Weekly window', data.plan.sevenDay]].map(([name, rs]) => {
+  const r = rs.at(-1);
+  if (!r) return h('div', { className: 'meter' }, h('span', {}, name), h('p', { className: 'dim' }, 'No reading yet. Readings start when the usage-log mod loads.'));
+  const left = r.resetsAt - Date.now(), stale = left <= 0, hot = !stale && r.percent >= 80;
+  return h('div', { className: 'meter' + (stale ? ' stale' : hot ? ' hot' : '') }, h('span', {}, name),
+    h('div', { className: 'read' }, h('b', {}, fmt.pct(r.percent)), h('span', {}, stale ? 'at the last reading' : r.percent >= 100 ? 'used, limit reached' : hot ? 'used, near the limit' : 'used')),
+    h('div', { className: 'scale', role: 'meter', 'aria-label': name + ' used', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': r.percent }, h('i', { style: `width:${Math.min(100, r.percent)}%` })),
+    h('div', { className: 'ticks' }, [0, 25, 50, 75, 100].map(t => h('span', {}, String(t)))),
+    h('p', { className: 'meta' }, stale ? `That window reset ${fmt.date(r.resetsAt)}. No reading since.` : `${Number.isFinite(left) ? `Resets in ${fmt.dur(left)}. ` : ''}Read ${fmt.date(r.at)}.`));
+})));
+
+// Sortable table; cols are [label, value(row), format(value, row)]
+function table(cols, rows, { sort = -1, desc = true, click, fixed, limit = 200, empty = NONE } = {}) {
+  if (!rows.length) return h('p', { className: 'dim' }, empty);
+  const isNum = cols.map(c => typeof c[1](rows[0]) === 'number'), tbody = h('tbody');
+  const more = h('button', { className: 'more', onclick: () => { limit = Infinity; fill(); } }, `Show all ${rows.length}`);
+  const heads = cols.map((c, i) => {
+    const go = () => { desc = sort === i ? !desc : isNum[i]; sort = i; fill(); };
+    return h('th', { className: (isNum[i] ? 'num ' : '') + (fixed ? '' : 'sortable'), tabIndex: fixed ? null : 0, onclick: !fixed && go, onkeydown: !fixed && key(go) }, c[0]);
+  });
+  const cmp = (a, b) => a == null || b == null ? (a == null) - (b == null) : (typeof a === 'string' ? a.localeCompare(b) : a - b) * (desc ? -1 : 1);
+  const fill = () => {
+    const v = sort < 0 ? null : cols[sort][1], sorted = v ? [...rows].sort((a, b) => cmp(v(a), v(b))) : rows;
+    if (!fixed) heads.forEach((th, i) => th.setAttribute('aria-sort', i === sort ? (desc ? 'descending' : 'ascending') : 'none'));
+    tbody.replaceChildren(...sorted.slice(0, limit).map(r => h('tr', { className: click ? 'click' : '', tabIndex: click ? 0 : null, onclick: click && (() => click(r)), onkeydown: click && key(() => click(r)) }, cols.map(([, val, f]) => {
+      const x = val(r);
+      return h('td', { className: typeof x === 'number' ? 'num' : '', title: typeof x === 'string' && x.length > 30 ? x : null }, x == null ? '–' : f ? f(x, r) : x);
+    }))));
+    more.hidden = rows.length <= limit;
+  };
+  fill();
+  return h('div', { className: 'tw' }, h('table', {}, h('thead', {}, h('tr', {}, heads)), tbody), more);
+}
+
+// Axis scale with round tick values
+const nice = max => {
+  if (!(max > 0)) max = 1;
+  const raw = max / 4, mag = 10 ** Math.floor(Math.log10(raw)), step = [1, 2, 5, 10].find(s => s * mag >= raw) * mag, top = Math.ceil(max / step - 1e-9) * step;
+  return { top, ticks: Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step) };
+};
+// Bar outline with a rounded data end
+const barPath = (x, y, w, l, round, hz) => {
+  const r = round ? Math.min(4, w / 2, l) : 0;
+  return hz ? `M${x},${y}h${l - r}q${r},0 ${r},${r}v${w - 2 * r}q0,${r} ${-r},${r}h${r - l}z` : `M${x},${y + l}v${r - l}q0,${-r} ${r},${-r}h${w - 2 * r}q${r},0 ${r},${r}v${l - r}z`;
+};
+const tip = $('tip');
+function showTip(e, title, rows) {
+  tip.replaceChildren(h('b', {}, title), rows.map(([color, value, name]) => h('div', {}, h('i', { style: `background:${color}` }), h('strong', {}, value), ' ' + name)));
+  tip.hidden = false;
+  const r = tip.getBoundingClientRect();
+  tip.style.left = Math.max(8, Math.min(e.clientX + 14, innerWidth - r.width - 8)) + 'px';
+  tip.style.top = Math.max(8, e.clientY - r.height - 12) + 'px';
+}
+
+// Chart: type col (stacked columns), bar (horizontal bars) or line (numeric x)
+function chart({ type = 'col', x, series, fy = fmt.num, fx = String, max, label = series[0].name }) {
+  const holder = h('div'), n = x.length, hz = type === 'bar', isLine = type === 'line';
+  const box = h('div', {}, series.length > 1 && h('div', { className: 'legend' }, series.map(s => h('span', {}, h('i', { style: `background:${s.color}` }), s.name))), holder);
+  const total = i => isLine ? Math.max(...series.map(s => s.values[i])) : sum(series, s => s.values[i]);
+  draws.push(() => {
+    if (!n) return holder.replaceChildren(h('p', { className: 'dim' }, NONE));
+    const W = box.clientWidth || 600, H = hz ? n * 28 + 26 : 220;
+    const m = hz ? { l: Math.min(220, W * .32), r: 70, t: 2, b: 24 } : { l: 54, r: 16, t: 10, b: 24 };
+    const pw = W - m.l - m.r, ph = H - m.t - m.b, bottom = m.t + ph;
+    const { top, ticks } = nice(max ?? x.reduce((t, _, i) => Math.max(t, total(i)), 0));
+    const v = q => q / top * (hz ? pw : ph), band = (hz ? ph : pw) / n, bw = Math.max(1, Math.min(24, band - 2));
+    const x0 = x[0], span = x[n - 1] - x0 || 1;
+    const pos = i => isLine ? m.l + (x[i] - x0) / span * pw : (hz ? m.t : m.l) + band * (i + .5);
+    const g = svg('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': label });
+    const text = (tx, ty, s, anchor = 'middle', cls = '') => g.append(svg('text', { x: tx, y: ty, 'text-anchor': anchor, class: cls }, s));
+    for (const t of ticks) {
+      const p = hz ? m.l + v(t) : bottom - v(t), cls = t ? 'grid' : 'base';
+      g.append(svg('line', hz ? { x1: p, x2: p, y1: m.t, y2: bottom, class: cls } : { x1: m.l, x2: W - m.r, y1: p, y2: p, class: cls }));
+      hz ? text(p, H - 7, fy(t)) : text(m.l - 8, p + 4, fy(t), 'end');
+    }
+    if (isLine) {
+      const k = Math.max(1, Math.min(6, Math.floor(pw / 120)));
+      for (let i = 0, prev; i <= k; i++) { const s = fx(x0 + span * i / k); if (s !== prev) text(m.l + pw * i / k, H - 7, prev = s, i ? i === k ? 'end' : 'middle' : 'start'); }
+      for (const s of series) {
+        const pts = s.values.map((q, i) => `${pos(i).toFixed(1)},${(bottom - v(q)).toFixed(1)}`);
+        g.append(svg('path', { d: 'M' + pts.join('L'), class: 'line', style: `stroke:${s.color}` }), svg('circle', { cx: pos(n - 1), cy: bottom - v(s.values[n - 1]), r: 4, class: 'dot', style: `fill:${s.color}` }));
+      }
+    } else x.forEach((label, i) => {
+      const last = series.findLast(s => s.values[i] > 0), c = pos(i) - bw / 2;
+      let acc = 0;
+      for (const s of series) {
+        const q = s.values[i];
+        if (!(q > 0)) continue;
+        const a = v(acc), full = v(q), l = full - (s !== last && full > 3 ? 2 : 0);
+        acc += q;
+        g.append(svg('path', { style: `fill:${s.color}`, d: hz ? barPath(m.l + a, c, bw, l, s === last, 1) : barPath(c, bottom - a - full + (full - l), bw, l, s === last, 0) }));
+      }
+      const every = Math.ceil(n / Math.max(1, Math.floor(pw / 60))), room = Math.floor((m.l - 14) / 6.6), name = fx(label);
+      if (hz) { text(m.l - 8, pos(i) + 4, name.length > room ? name.slice(0, room - 1) + '…' : name, 'end', 'cat'); text(m.l + v(acc) + 6, pos(i) + 4, fy(acc), 'start', 'val'); }
+      else if (i % every === 0) text(pos(i), H - 7, name);
+    });
+    const mark = g.appendChild(svg('g', { class: 'hover' })), hide = () => { tip.hidden = true; mark.replaceChildren(); };
+    g.addEventListener('pointerleave', hide);
+    g.addEventListener('pointermove', e => {
+      const r = g.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top, at = x0 + (px - m.l) / pw * span;
+      const i = isLine ? x.reduce((b, t, j) => Math.abs(t - at) < Math.abs(x[b] - at) ? j : b, 0) : Math.floor((hz ? py - m.t : px - m.l) / band);
+      if (i < 0 || i >= n) return hide();
+      mark.replaceChildren(...(isLine
+        ? [svg('line', { x1: pos(i), x2: pos(i), y1: m.t, y2: bottom, class: 'base' }), ...series.map(s => svg('circle', { cx: pos(i), cy: bottom - v(s.values[i]), r: 4, class: 'dot', style: `fill:${s.color}` }))]
+        : [svg('rect', hz ? { x: m.l, y: m.t + band * i, width: pw, height: band } : { x: m.l + band * i, y: m.t, width: band, height: ph })]));
+      showTip(e, fx(x[i]), [...series.map(s => [s.color, fy(s.values[i]), s.name]), ...(series.length > 1 && !isLine ? [['transparent', fy(total(i)), 'Total']] : [])]);
+    });
+    holder.replaceChildren(g);
+  });
+  return box;
+}
+
+// Shared column sets for rows produced by agg
+const usageCols = [['Requests', r => r.requests, fmt.int], ['Input', r => r.input, fmt.num], ['Output', r => r.output, fmt.num], ['Cache write', r => r.cacheWrite, fmt.num], ['Cache read', r => r.cacheRead, fmt.num], ['Tokens', r => r.tokens, fmt.num], ['Est. cost', r => r.cost, fmt.usd]];
+const planCols = [['5h %', r => r.p5, fmt.pct], ['7d %', r => r.p7, fmt.pct]];
+const open = r => location.hash = '#/session/' + encodeURIComponent(r.id);
+const one = (name, values, color = C[0]) => [{ name, color, values }];
+
+const views = {
+  ''({ cut, sessions, buckets }) {
+    const t = agg(buckets), byDay = groupBy(buckets, b => b.day), days = [];
+    const first = cut || buckets.reduce((a, b) => b.day < a ? b.day : a, dayOf(Date.now()));
+    for (let d = Date.parse(first); d <= Date.parse(dayOf(Date.now())); d += 864e5) days.push(new Date(d).toISOString().slice(0, 10));
+    const d = days.map(day => { const bs = byDay.get(day) || []; return { name: day, ...agg(bs), sessions: new Set(bs.map(b => b.s.id)).size }; });
+    const daily = (title, series, fy) => card(title, chart({ x: days, series, fy, fx: fmt.day, label: title }));
+    return [
+      meters(),
+      tiles([['Total tokens', fmt.num(t.tokens), fmt.int(t.requests) + ' requests'], ['Estimated cost', fmt.usd(t.cost), 'price-table estimate'], ['Sessions', fmt.int(sessions.length)], ['Cache hit rate', fmt.pct(t.cacheRead / (t.cacheRead + t.cacheWrite + t.input) * 100), 'cache read / all input']]),
+      daily('Tokens per day', [['Input', 'input'], ['Output', 'output'], ['Cache write', 'cacheWrite'], ['Cache read', 'cacheRead']].map(([name, k], i) => ({ name, color: C[i], values: d.map(r => r[k]) }))),
+      h('div', { className: 'grid2' }, daily('Estimated cost per day', one('Estimated cost', d.map(r => r.cost)), fmt.usd), daily('Sessions per day', one('Sessions', d.map(r => r.sessions)), fmt.int)),
+      card('By day', table([['Day', r => r.name], ['Sessions', r => r.sessions, fmt.int], ...usageCols], d, { sort: 0 })),
+    ];
+  },
+  plan({ sessions, buckets, cutMs }) {
+    const p = data.plan, since = data.loggingSince, t = agg(since == null ? [] : buckets.filter(b => b.day >= dayOf(since)));
+    const line = (title, rs) => card(title, chart({ type: 'line', x: rs.map(r => r.at), series: one(title, rs.map(r => r.percent)), fy: fmt.pct, fx: fmt.date, max: 100 }),
+      h('details', {}, h('summary', {}, `Readings (${rs.length})`), table([['Time', r => r.at, fmt.date], ['Percent', r => r.percent, fmt.pct], ['Resets', r => r.resetsAt, fmt.date]], rs, { sort: 0 })));
+    const by = (label, rows, extra = []) => card('Attributed percent per ' + label.toLowerCase(), table([[label, r => r.name], ...extra, ...planCols, ['Tokens', r => r.tokens, fmt.num]], rows, { sort: extra.length + 1, click: rows[0]?.id && open }));
+    return [
+      meters(),
+      tiles([['Tokens per 1% (5-hour)', fmt.num(t.tokens / t.p5)], ['Tokens per 1% (weekly)', fmt.num(t.tokens / t.p7)], ['Unattributed 5-hour', fmt.pct(p.unattributed.fiveHour), 'no local request explains it'], ['Unattributed weekly', fmt.pct(p.unattributed.sevenDay), 'no local request explains it'],
+        ['Fable weekly share', fmt.pct(sum(buckets.filter(b => /fable/i.test(b.model)), b => b.p7)), 'estimate from token share']]),
+      h('div', { className: 'grid2' }, line('5-hour limit', p.fiveHour.filter(r => r.at >= cutMs)), line('Weekly limit', p.sevenDay.filter(r => r.at >= cutMs))),
+      by('Session', sessions.map(({ s, t }) => ({ id: s.id, name: s.title || s.id, project: s.project, ...t })), [['Project', r => r.project]]),
+      h('div', { className: 'grid2' }, by('Project', rollup(buckets, b => b.s.project)), by('Model', rollup(buckets, b => b.model))),
+    ];
+  },
+  sessions({ sessions }) {
+    const rows = sessions.map(({ s, b, t }) => ({ id: s.id, s, t, title: s.title || s.id, sub: sum(b.filter(u => u.sub), u => u.cost) }));
+    const cols = [['Title', r => r.title], ['Project', r => r.s.project], ['Start', r => r.s.start, fmt.date], ['Duration', r => r.s.end - r.s.start, fmt.dur], ['Prompts', r => r.s.prompts, fmt.int], ['Subagents', r => r.s.agents.length, fmt.int],
+      ['Main cost', r => r.t.cost - r.sub, fmt.usd], ['Subagent cost', r => r.sub, fmt.usd], ['Tokens', r => r.t.tokens, fmt.num], ['5h %', r => r.t.p5, fmt.pct], ['7d %', r => r.t.p7, fmt.pct], ['Engine cost', r => r.s.log?.engineCost ?? null, fmt.usd]];
+    const holder = h('div'), show = () => holder.replaceChildren(table(cols, rows.filter(r => r.title.toLowerCase().includes(state.q)), { sort: 2, click: open }));
+    show();
+    return card(null, h('label', { className: 'field' }, 'Search titles', h('input', { type: 'search', value: state.q, oninput: e => { state.q = e.target.value.toLowerCase(); show(); } })), holder);
+  },
+  agents({ sessions, cutMs }) {
+    const rows = rollup(sessions.flatMap(x => x.s.agents.filter(a => a.start >= cutMs)), a => a.type);
+    return card('Subagent types', table([['Type', r => r.name], ['Runs', r => r.n, fmt.int], ['Tokens', r => r.tokens, fmt.num], ['Est. cost', r => r.cost, fmt.usd], ['Avg duration', r => sum(r.rs, a => a.end - a.start) / r.n, fmt.dur], ['Avg tool calls', r => sum(r.rs, a => a.toolCalls) / r.n, fmt.num]], rows, { sort: 3 }));
+  },
+  tools({ sessions }) {
+    const m = new Map();
+    for (const { s } of sessions) for (const [name, t] of Object.entries(s.tools || {})) {
+      const o = m.get(name) || m.set(name, { name, calls: 0, errors: 0, timed: 0, ms: 0, maxMs: 0 }).get(name);
+      for (const k of ['calls', 'errors', 'timed', 'ms']) o[k] += t[k] || 0;
+      o.maxMs = Math.max(o.maxMs, t.maxMs || 0);
+    }
+    return card('Tools', table([['Tool', r => r.name], ['Calls', r => r.calls, fmt.int], ['Errors', r => r.errors, fmt.int], ['Error rate', r => r.calls ? r.errors / r.calls * 100 : null, fmt.pct], ['Avg duration', r => r.timed ? r.ms / r.timed : null, fmt.dur], ['Slowest', r => r.timed ? r.maxMs : null, fmt.dur]], [...m.values()], { sort: 1 }));
+  },
+  models({ buckets }) {
+    return [['Model', b => b.model], ['Project', b => b.s.project]].map(([label, key]) => {
+      const rows = rollup(buckets, key).sort((a, b) => b.cost - a.cost), top = rows.slice(0, 10);
+      return card(`Estimated cost per ${label.toLowerCase()}`, chart({ type: 'bar', x: top.map(r => r.name), series: one('Estimated cost', top.map(r => r.cost)), fy: fmt.usd }), table([[label, r => r.name], ...usageCols], rows, { sort: 7 }));
+    });
+  },
+  cost({ sessions }) {
+    const rows = sessions.filter(x => x.s.log?.engineCost != null).map(({ s }) => { const est = sum(s.usage, b => b.cost), eng = s.log.engineCost; return { id: s.id, s, est, eng, diff: est - eng }; });
+    const est = sum(rows, r => r.est), eng = sum(rows, r => r.eng), rel = (d, e) => e ? d / e * 100 : null;
+    return [
+      tiles([['Sessions compared', fmt.int(rows.length), 'sessions with an engine ledger'], ['Price-table estimate', fmt.usd(est)], ['Engine ledger', fmt.usd(eng)], ['Difference', fmt.signed(est - eng), fmt.pct(rel(est - eng, eng)) + ' of engine cost']]),
+      card('Estimate against engine ledger', table([['Title', r => r.s.title || r.id], ['Project', r => r.s.project], ['Start', r => r.s.start, fmt.date], ['Estimate', r => r.est, fmt.usd], ['Engine', r => r.eng, fmt.usd], ['Difference', r => r.diff, fmt.signed], ['Difference %', r => rel(r.diff, r.eng), fmt.pct]], rows, { sort: 2, click: open })),
+      card('Price table (USD per 1M tokens)', table([['Model prefix', r => r[0]], ...[['Input', 'input'], ['Output', 'output'], ['Cache read', 'read'], ['Cache write 5m', 'write5m'], ['Cache write 1h', 'write1h']].map(([k, f]) => [k, r => r[1][f], fmt.usd])], Object.entries(data.prices || {}), { sort: 0, desc: false })),
+    ];
+  },
+};
+
+// Chat message renderers
+const fold = (label, text, cls) => h('details', { className: cls }, h('summary', {}, label), h('pre', {}, text ?? ''));
+const block = b => b.type === 'text' ? h('pre', {}, b.text ?? '') : b.type === 'thinking' ? fold('Thinking', b.text, 'dim') : b.type === 'image' ? h('p', { className: 'dim' }, '[image]')
+  : fold(`${b.type === 'tool_use' ? 'Tool' : 'Result'}${b.name ? ': ' + b.name : ''}${b.isError ? ' (error)' : ''}`, b.text, b.isError ? 'err' : '');
+const message = m => h('div', { className: 'msg ' + m.role }, h('div', { className: 'meta' }, [m.role, fmt.date(m.at), m.model, m.usage && `${fmt.num(tok(m.usage))} tokens`, m.usage && fmt.usd(m.usage.cost)].filter(Boolean).map((x, i) => h(i ? 'span' : 'b', {}, x))), m.blocks.map(block));
+
+// Session detail view
+async function detail(id) {
+  const { session: s, turns, events, workflows } = await get('/api/session/' + encodeURIComponent(id));
+  const t = agg(s.usage), log = s.log, ids = new Set(s.agents.map(a => a.id)), kids = groupBy(s.agents, a => ids.has(a.parent) ? a.parent : ''), tree = [];
+  const walk = (p, d) => (kids.get(p) || []).forEach(a => { tree.push({ ...a, d }); walk(a.id, d + 1); });
+  walk('', 0);
+  const chat = h('div'), chatTitle = h('h2', {}, 'Chat');
+  const load = async a => {
+    chatTitle.textContent = 'Chat: ' + (a ? `${a.type} ${a.description || ''}` : 'main thread');
+    chat.replaceChildren('Loading…');
+    try { chat.replaceChildren(...(await get(`/api/chat/${encodeURIComponent(id)}${a ? '?agent=' + encodeURIComponent(a.id) : ''}`)).messages.map(message)); }
+    catch (e) { chat.replaceChildren(h('p', { className: 'err' }, e.message)); }
+    chatTitle.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  };
+  const delta = k => r => r.log?.[k] ? r.log[k][1] - r.log[k][0] : null;
+  return [
+    h('div', {}, h('a', { href: '#/sessions' }, 'Back to sessions'), h('h1', { className: 'title' }, s.title || s.id),
+      h('dl', { className: 'facts' }, [['Project', s.project], ['Folder', s.cwd], ['Version', s.version], ['Entry point', s.entrypoint], ['Session ID', s.id]].filter(f => f[1]).map(([k, v]) => h('div', {}, h('dt', {}, k), h('dd', {}, v))))),
+    tiles([['Started', fmt.date(s.start)], ['Duration', fmt.dur(s.end - s.start)], ['Prompts', fmt.int(s.prompts), s.compactions + ' compactions'], ['Tokens', fmt.num(t.tokens), fmt.int(t.requests) + ' requests'], ['Estimated cost', fmt.usd(t.cost), log?.engineCost != null && 'engine ledger ' + fmt.usd(log.engineCost)],
+      ['Plan burned', fmt.pct(t.p5) + ' 5h', fmt.pct(t.p7) + ' weekly'], ...(log ? [['Context fill', fmt.pct(log.context?.percent), log.context && `${fmt.num(log.context.tokens)} of ${fmt.num(log.context.window)}`], ['Turn outcomes', fmt.int(log.outcomes.answer) + ' answered', `${log.outcomes.aborted} aborted, ${log.outcomes.refusal} refused, ${log.outcomes.error} errors`], ['End reason', log.endReason || '–']] : [])]),
+    card(`Subagents (${tree.length})`, table([['Type', r => r.type, (v, r) => h('span', { style: `padding-left:${r.d * 18}px` }, (r.d ? '└ ' : '') + v)], ['Description', r => r.description], ['Model', r => r.model], ['Tokens', r => r.input == null ? null : tok(r), fmt.num], ['Est. cost', r => r.cost, fmt.usd], ['Duration', r => r.end - r.start, fmt.dur], ['Tool calls', r => r.toolCalls, fmt.int], ['Background', r => r.background ? 'yes' : ''], ['Workflow', r => r.workflow]], tree, { fixed: true, click: load, limit: Infinity, empty: 'No subagent ran in this session.' })),
+    card(`Turns (${turns.length})`, table([['Time', r => r.at, fmt.date], ['Prompt', r => (r.prompt || '').replace(/\s+/g, ' ').slice(0, 300)], ['Duration', r => r.log?.durationMs ?? r.end - r.at, fmt.dur], ['Requests', r => r.requests, fmt.int], ['Tokens', r => tok(r), fmt.num], ['Est. cost', r => r.cost, fmt.usd], ['Tool calls', r => r.toolCalls, fmt.int],
+      ['Outcome', r => r.log?.reason ?? null, v => h('span', { className: v === 'error' ? 'err' : '' }, v)], ['5h +%', delta('p5'), fmt.pct], ['7d +%', delta('p7'), fmt.pct], ['Context %', r => r.log?.contextPercent ?? null, fmt.pct], ['Context tokens', r => r.log?.contextTokens ?? null, fmt.num]], turns, { sort: 0, desc: false })),
+    h('div', { className: 'grid2' },
+      card('Events', table([['Time', r => r.at, fmt.date], ['Kind', r => r.kind], ['Detail', r => r.detail]], events, { sort: 0, desc: false, empty: 'No event recorded. Events start when the usage-log mod loads.' })),
+      card('Workflows', table([['Name', r => r.name], ['Status', r => r.status], ['Duration', r => r.durationMs, fmt.dur], ['Agents', r => r.agents, fmt.int], ['Tokens', r => r.tokens, fmt.num], ['Tool calls', r => r.toolCalls, fmt.int]], workflows, { empty: 'No workflow ran in this session.' }))),
+    card(null, chatTitle, h('button', { onclick: () => load() }, 'Load main thread'), chat),
+  ];
+}
+
+// Router
+async function render() {
+  if (!data) return;
+  const [, name = '', id] = location.hash.split('/'), isDetail = name === 'session', t = ++seq;
+  $('filters').hidden = isDetail;
+  for (const a of $('nav').children) a.hash === '#/' + (isDetail ? 'sessions' : name in views ? name : '') ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current');
+  let nodes;
+  if (!isDetail) draws.length = 0;
+  try { nodes = isDetail ? await detail(decodeURIComponent(id)) : (views[name] || views[''])(scope()); }
+  catch (e) { nodes = h('p', { className: 'err' }, e.message); }
+  if (t !== seq) return;
+  if (isDetail) draws.length = 0;
+  $('main').replaceChildren(...[nodes].flat().filter(Boolean));
+  draws.forEach(d => d());
+}
+
+// Filter row
+function filters() {
+  const projects = [...new Set(data.sessions.map(s => s.project))].sort();
+  if (!projects.includes(state.project)) state.project = '';
+  $('filters').replaceChildren(
+    h('div', { className: 'seg', role: 'group', 'aria-label': 'Date range' }, [[7, '7 days'], [30, '30 days'], [90, '90 days'], [0, 'All time']].map(([n, label]) => h('button', { 'aria-pressed': String(state.range === n), onclick: () => { state.range = n; filters(); render(); } }, label))),
+    h('select', { 'aria-label': 'Project', onchange: e => { state.project = e.target.value; render(); } }, h('option', { value: '' }, 'All projects'), projects.map(p => h('option', { value: p, selected: p === state.project }, p))));
+}
+
+async function load() {
+  document.body.classList.add('busy');
+  $('main').ariaBusy = 'true';
+  if (!data) $('main').replaceChildren(h('p', { className: 'dim', role: 'status' }, 'Reading transcripts. A first load takes about 10 seconds.'));
+  try { data = await get('/api/data'); $('stamp').textContent = 'Updated ' + fmt.date(data.generatedAt); filters(); await render(); }
+  catch (e) { $('main').replaceChildren(h('p', { className: 'err', role: 'alert' }, `Could not load usage data: ${e.message}. Check that the dashboard server runs, then press Refresh.`)); }
+  document.body.classList.remove('busy');
+  $('main').ariaBusy = 'false';
+}
+
+$('nav').append(...ROUTES.map(([r, label]) => h('a', { href: '#/' + r }, label)));
+$('refresh').onclick = load;
+addEventListener('hashchange', () => { scrollTo(0, 0); render(); });
+let resizing;
+addEventListener('resize', () => { clearTimeout(resizing); resizing = setTimeout(() => draws.forEach(d => d()), 100); });
+load();
+</script>
+</body>
+</html>
