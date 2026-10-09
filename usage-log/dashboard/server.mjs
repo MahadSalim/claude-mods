@@ -599,6 +599,10 @@ http
     const send = (status, type, body) => response.writeHead(status, { 'content-type': `${type}; charset=utf-8`, 'cache-control': 'no-store' }).end(body)
 
     try {
+      if (request.method === 'POST' && url.pathname === '/api/stop') {
+        return response.end('{}', () => process.exit())
+      }
+
       if (!routes[route]) {
         return send(200, 'text/html', await fsp.readFile(path.join(HERE, 'index.html')))
       }

@@ -15,12 +15,30 @@ const USAGE = {
 
 type Row = Record<string, any>
 
-/** Answers what usage-log calls beneath it; returns the files it wrote and the session id it reads. */
+/** Answers what usage-log calls beneath it; returns the files it wrote, the session id it reads and the dashboard's server. */
 const world = (on: On) => {
   const files: Record<string, string> = {}
   const session = { id: 's1' }
+  const server = { isUp: false, starts: [] as (readonly string[])[] }
   mock.clock(on, { now: 1000 })
   mock.env(on, { CLAUDE_CONFIG_DIR: 'C:/cfg' })
+  mock.store(on)
+  on('command.register', ($, e) => ({ value: { command: e.name } }))
+  on('process.run', ($, e) => {
+    server.isUp = true
+    server.starts.push(e.argv)
+
+    return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('http.fetch', ($, e) => {
+    if (!server.isUp) {
+      throw new Error('connection refused')
+    }
+
+    server.isUp = !e.url.endsWith('/api/stop')
+
+    return { value: { status: 200, ok: true, headers: {}, text: '' } }
+  })
   on('fs.write', ($, e) => ((files[e.path.replaceAll('\\', '/')] = e.text), { value: undefined }))
   on('session.id', () => ({ value: session.id }))
   on('session.usage', () => ({ value: USAGE }) as never)
@@ -36,8 +54,10 @@ const world = (on: On) => {
   on('tool.call', { tool: 'Bash' }, () => ({ deny: 'no' }))
   on('tool.call', { tool: 'Edit' }, () => ({ isError: true, result: 'boom' }) as never)
 
-  return { files, session }
+  return { files, session, server }
 }
+const START = { cwd: 'C:/work', surface: 'desktop', isInteractive: true } as const
+const toggle = ($: Engine, args = '') => $.command.run({ command: 'usage-dashboard', args }).then(ran => ran.text)
 /** The log files of one session id, by path. */
 const named = (files: Record<string, string>, id: string) => Object.keys(files).filter(path => path.includes(`/events/${id}.`))
 /** The rows of every log file of one session id. */
@@ -49,7 +69,7 @@ const call = ($: Engine, tool: string, more: object = {}) => $.tool.call({ tool,
 test('a turn logs its plan readings before and after, and its outcome', async ($, on) => {
   const { files } = world(on)
 
-  await $.session.start({ cwd: 'C:/work', surface: 'desktop', isInteractive: true })
+  await $.session.start(START)
   await $.turn.start({ text: 'hi', turnId: 'turn1' })
   await $.turn.complete({ answer: 'done', durationMs: 4200, isAborted: false, turnId: 'turn1', reason: 'answer', usage: { model: 'claude-opus-5-5', input_tokens: 3, output_tokens: 9 } as never })
   await $.turn.complete({ answer: '', durationMs: 10, isAborted: true, turnId: 'turn2', agentId: 'sub', reason: 'aborted' })
@@ -102,4 +122,28 @@ test('each session id and each full file gets its own file', async ($, on) => {
   expect(rows(files, 's1').length).toBe(1)
   expect(rows(files, 's2').length).toBe(1000)
   expect(named(files, 's2').length).toBe(2)
+})
+
+test('a session starts the dashboard once, and the command turns it off and on', async ($, on) => {
+  const { server } = world(on)
+
+  await $.session.start(START)
+  await $.session.start(START)
+
+  expect(server.starts).toEqual([['node', '-e', expect.any(String), expect.stringMatching('/dashboard/server.mjs$')]])
+  expect(await toggle($)).toBe('Usage dashboard is off.')
+  expect(server.isUp).toBe(false)
+  expect(await toggle($)).toBe('Usage dashboard is on: http://127.0.0.1:5198')
+  expect(server.starts.length).toBe(2)
+})
+
+test('auto start turned off leaves the dashboard down at the start', async ($, on) => {
+  const { server } = world(on)
+
+  expect(await toggle($, 'auto')).toBe('Usage dashboard auto start is off.')
+  await $.session.start(START)
+  expect(server.starts).toEqual([])
+  expect(await toggle($, 'auto')).toBe('Usage dashboard auto start is on.')
+  await $.session.start(START)
+  expect(server.starts.length).toBe(1)
 })
