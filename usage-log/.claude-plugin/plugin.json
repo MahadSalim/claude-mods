@@ -1,5 +1,5 @@
 {
   "name": "usage-log",
-  "version": "0.3.0",
-  "description": "Logs plan readings, context fill, engine cost, turn outcomes and tool timing per session. Serves the usage dashboard at http://127.0.0.1:5198, started with each session; needs node on the PATH. /usage-dashboard turns the server on or off. /usage-dashboard auto turns the start with each session on or off."
+  "version": "0.4.0",
+  "description": "Logs plan readings, context fill, engine cost, turn outcomes, tool timing, permission asks, commands and settings hook runs per session. Records what each session loads into its context and applies the rules set in the dashboard's Context tab: defer or rewrite tools, rewrite or drop the skill listing, injected blocks and system prompt sections, reorder the sections, cap file reads. Serves the usage dashboard at http://127.0.0.1:5198, started with each session; needs node on the PATH. /usage-dashboard turns the server on or off. /usage-dashboard auto turns the start with each session on or off."
 }

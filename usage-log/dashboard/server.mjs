@@ -10,36 +10,69 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 // The Claude config folder.
 const CONFIG = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude')
 const PROJECTS = path.join(CONFIG, 'projects')
-const EVENTS = path.join(CONFIG, 'usage-log', 'events')
-const CACHE = path.join(CONFIG, 'usage-log', 'cache.json')
-const CACHE_VERSION = 1
+const HOME = path.join(CONFIG, 'usage-log')
+const EVENTS = path.join(HOME, 'events')
+const CACHE = path.join(HOME, 'cache.json')
+// What sessions loaded into their context, and the rules applied to it.
+const CONTEXT = path.join(HOME, 'context.json')
+const RULES = path.join(HOME, 'rules.json')
+const CACHE_VERSION = 2
 const PORT = Number(process.env.PORT) || 5198
+// Host headers the server answers.
+const HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`])
 const PRICES = JSON.parse(fs.readFileSync(path.join(HERE, 'prices.json'), 'utf8'))
 // Row types of a transcript the dashboard reads.
 const READ_TYPES = new Set(['user', 'assistant', 'system', 'custom-title', 'ai-title'])
 // Characters of one chat block sent to the page.
-const BLOCK_CHARS = 20_000
+const BLOCK_CHARS = 4000
+// Characters of a request body the server reads.
+const BODY_CHARS = 2_000_000
+const CHARS_PER_TOKEN = 4
+const WEEK_MS = 7 * 86_400_000
+// Milliseconds since its last activity a session counts as running, and as holding a warm prompt cache.
+const LIVE_MS = 300_000
+const OPEN_MS = 3_600_000
 const WINDOWS = { five_hour: 'p5', seven_day: 'p7' }
 const TOKENS = ['input', 'output', 'cacheWrite', 'cacheRead']
+// Dollar figures of a request: its cost, the cost by token type, and what cache reads saved.
+const DOLLARS = ['cost', 'cIn', 'cOut', 'cRead', 'cWrite', 'saved']
+// Tools whose input names one file.
+const FILE_TOOLS = new Set(['Read', 'Edit', 'Write'])
+// Git steps a Bash command runs, by name.
+const GIT = { commit: /\bgit\s+commit\b/, pr: /\bgh\s+pr\s+create\b/ }
+const ACTIONS = new Set(['defer', 'drop', 'rewrite'])
+const NO_CAP = { on: false, k: 10, part: true }
 
 /** The price row of a model id: the longest prefix in the table. */
 const rate = model =>
   PRICES.models[Object.keys(PRICES.models).filter(prefix => model.startsWith(prefix)).sort((a, b) => b.length - a.length)[0]]
 
-/** The price-table cost of one request, in dollars. */
-const cost = r => {
+/** The price row a request is billed at: the model's, or its tier over 100k input tokens. */
+const tierOf = r => {
   const price = rate(r.model)
 
-  if (!price) {
-    return 0
+  return price?.over100k && r.input + r.cacheWrite + r.cacheRead > 100_000 ? price.over100k : price
+}
+
+/** The price-table cost of one request by token type, in dollars: input, output, cache read, cache write. */
+const costs = r => {
+  const tier = tierOf(r)
+
+  if (!tier) {
+    return [0, 0, 0, 0]
   }
 
-  const tier = price.over100k && r.input + r.cacheWrite + r.cacheRead > 100_000 ? price.over100k : price
   const writes = (r.cacheWrite - r.cacheWrite1h) * PRICES.write5m + r.cacheWrite1h * PRICES.write1h
-  const dollars = r.input * tier.input + r.output * tier.output + r.cacheRead * tier.read + writes * tier.input
+  const scale = ((r.fast && rate(r.model).fast) || 1) / 1e6
 
-  return (dollars * ((r.fast && price.fast) || 1)) / 1e6
+  return [r.input * tier.input, r.output * tier.output, r.cacheRead * tier.read, writes * tier.input].map(dollars => dollars * scale)
 }
+
+/** The price-table cost of one request, in dollars. */
+const cost = r => costs(r).reduce((total, dollars) => total + dollars, 0)
+
+/** The tokens of one request, of every type. */
+const tokens = r => r.input + r.output + r.cacheWrite + r.cacheRead
 
 /** The local calendar day of a time, as YYYY-MM-DD. */
 const day = at => {
@@ -49,12 +82,12 @@ const day = at => {
 }
 
 /** An empty total of token counts, cost, plan share and requests. */
-const zeros = () => ({ requests: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, cost: 0, p5: 0, p7: 0 })
+const zeros = () => ({ requests: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, cost: 0, cIn: 0, cOut: 0, cRead: 0, cWrite: 0, saved: 0, p5: 0, p7: 0, wk: 0 })
 
 /** Adds the token counts, cost and plan share of a request to a total. */
 const add = (total, r) => {
-  for (const key of [...TOKENS, 'cost', 'p5', 'p7']) {
-    total[key] += r[key]
+  for (const key of [...TOKENS, ...DOLLARS, 'p5', 'p7', 'wk']) {
+    total[key] += r[key] ?? 0
   }
   total.requests++
 
@@ -93,9 +126,38 @@ const isRead = line => {
 const textOf = content =>
   typeof content === 'string' ? content : (content ?? []).filter(block => block.type === 'text').map(block => block.text).join('\n')
 
+/** The first line of a text, cut to n characters. */
+const firstLine = (text, n) => text.trim().split('\n')[0].slice(0, n)
+
+/** What the dashboard keeps of a tool call's input: the file it names, the skill it loads, the git step it runs. */
+const factsOf = ({ name, input = {} }) => ({
+  file: FILE_TOOLS.has(name) ? input.file_path : undefined,
+  skill: name === 'Skill' ? input.skill : undefined,
+  git: name === 'Bash' ? Object.keys(GIT).find(step => GIT[step].test(input.command ?? '')) : undefined,
+})
+
+/** The lines a file tool's result added and removed. */
+const linesOf = result => {
+  const changed = result.structuredPatch.flatMap(hunk => hunk.lines ?? [])
+  const count = sign => changed.filter(line => line.startsWith(sign)).length
+
+  return { add: result.type === 'create' ? String(result.content ?? '').split('\n').length : count('+'), del: count('-') }
+}
+
 /** Whether a transcript row is a prompt the person typed. */
 const isPrompt = r =>
   r.type === 'user' && !r.isMeta && !r.isSidechain && !r.toolUseResult && (r.origin?.kind ?? 'human') === 'human' && /^(?!<(local-command|task-notification))\s*\S/.test(textOf(r.message?.content))
+
+/** The model and token counts of one assistant message. */
+const usageOf = ({ model, usage: u }) => ({
+  model,
+  input: u.input_tokens ?? 0,
+  output: u.output_tokens ?? 0,
+  cacheWrite: u.cache_creation_input_tokens ?? 0,
+  cacheWrite1h: u.cache_creation?.ephemeral_1h_input_tokens ?? 0,
+  cacheRead: u.cache_read_input_tokens ?? 0,
+  fast: u.speed === 'fast',
+})
 
 /** One transcript file as the dashboard counts it: requests, tool uses, prompts, compactions and facts. */
 const parseTranscript = async file => {
@@ -114,24 +176,13 @@ const parseTranscript = async file => {
     } else if (r.type === 'ai-title') {
       out.aiTitle = r.aiTitle
     } else if (r.type === 'system' && r.subtype === 'compact_boundary') {
-      out.compacts.push({ at, trigger: r.compactMetadata?.trigger, tokensBefore: r.compactMetadata?.preTokens })
+      out.compacts.push({ at, trigger: r.compactMetadata?.trigger, tokensBefore: r.compactMetadata?.preTokens, tokensAfter: r.compactMetadata?.postTokens })
     } else if (r.type === 'assistant' && r.message?.usage && r.message.model !== '<synthetic>') {
-      const u = r.message.usage
-      out.requests[r.requestId ?? r.message.id] = {
-        at,
-        agent: r.agentId,
-        model: r.message.model,
-        input: u.input_tokens ?? 0,
-        output: u.output_tokens ?? 0,
-        cacheWrite: u.cache_creation_input_tokens ?? 0,
-        cacheWrite1h: u.cache_creation?.ephemeral_1h_input_tokens ?? 0,
-        cacheRead: u.cache_read_input_tokens ?? 0,
-        fast: u.speed === 'fast',
-      }
+      out.requests[r.requestId ?? r.message.id] = { at, agent: r.agentId, ...usageOf(r.message) }
 
       for (const block of r.message.content ?? []) {
         if (block.type === 'tool_use') {
-          out.uses[block.id] = { at, agent: r.agentId, name: block.name }
+          out.uses[block.id] = { at, agent: r.agentId, name: block.name, ...factsOf(block) }
         }
       }
     } else if (r.type === 'user') {
@@ -140,8 +191,11 @@ const parseTranscript = async file => {
       out.entrypoint ??= r.entrypoint
 
       for (const block of Array.isArray(r.message?.content) ? r.message.content : []) {
-        if (block.type === 'tool_result' && block.is_error && out.uses[block.tool_use_id]) {
-          out.uses[block.tool_use_id].isError = true
+        const use = block.type === 'tool_result' && out.uses[block.tool_use_id]
+
+        if (use) {
+          const text = textOf(block.content)
+          Object.assign(use, { chars: text.length }, block.is_error && { isError: true, err: firstLine(text, 160) }, r.toolUseResult?.structuredPatch && linesOf(r.toolUseResult))
         }
       }
 
@@ -322,8 +376,10 @@ const build = () => {
       for (const [id, r] of Object.entries(f.requests)) {
         if (!seen.has(id)) {
           seen.add(id)
-          const request = { ...r, agent: r.agent ?? f.agent, p5: 0, p7: 0 }
-          request.cost = cost(request)
+          const request = { ...r, agent: r.agent ?? f.agent, p5: 0, p7: 0, wk: 0 }
+          const [cIn, cOut, cRead, cWrite] = costs(request)
+          const tier = tierOf(request)
+          Object.assign(request, { cIn, cOut, cRead, cWrite, cost: cIn + cOut + cRead + cWrite, saved: tier ? (r.cacheRead * (tier.input - tier.read)) / 1e6 : 0 })
           s.requests.push(request)
           requests.push(request)
         }
@@ -348,7 +404,30 @@ const build = () => {
     plan.unattributed[name] = attribute(plan[name], requests, field)
   }
 
-  return { sessions, plan, loggingSince: rows[0]?.at ?? null }
+  const week = plan.sevenDay.at(-1)
+  const weekStart = week?.resetsAt > Date.now() ? week.resetsAt - WEEK_MS : Infinity
+  const blocks = {}
+  const other = {}
+
+  for (const r of requests) {
+    r.wk = r.at >= weekStart ? r.p7 : 0
+  }
+
+  for (const row of rows) {
+    for (const [type, n] of Object.entries(row.blocks ?? {})) {
+      blocks[type] = (blocks[type] ?? 0) + n
+    }
+
+    for (const limit of row.usage?.rateLimits ?? []) {
+      if (!WINDOWS[limit.kind]) {
+        other[limit.kind] = { kind: limit.kind, at: row.at, percent: limit.percentUsed, resetsAt: Date.parse(limit.resetsAt) || null }
+      }
+    }
+  }
+
+  plan.other = Object.values(other)
+
+  return { sessions, plan, blocks, loggingSince: rows[0]?.at ?? null }
 }
 
 /** The log summary of a session: engine cost, context fill, turn outcomes and how it ended. */
@@ -384,7 +463,15 @@ const summarize = s => {
   const tools = {}
   const agents = {}
   const spawnedBy = Object.fromEntries(s.uses.map(use => [use.id, use.agent ?? null]))
-  const tool = name => (tools[name] ??= { calls: 0, errors: 0, timed: 0, ms: 0, maxMs: 0 })
+  const days = {}
+  const hours = {}
+  const skills = {}
+  const commands = {}
+  const hooks = {}
+  const asked = new Set()
+  const tool = name => (tools[name] ??= { calls: 0, errors: 0, timed: 0, ms: 0, maxMs: 0, chars: 0, asked: 0, denied: 0 })
+  const on = at => (days[day(at)] ??= { day: day(at), calls: 0, fails: 0, added: 0, removed: 0, files: new Set(), commits: 0, prs: 0 })
+  const count = (counts, name, n = 1) => (counts[name] = (counts[name] ?? 0) + n)
 
   for (const f of s.files.filter(f => f.agent)) {
     agents[f.agent] ??= {
@@ -405,6 +492,7 @@ const summarize = s => {
 
   for (const r of s.requests) {
     add((buckets[`${day(r.at)}|${r.model}|${r.agent ? 1 : 0}`] ??= { ...zeros(), day: day(r.at), model: r.model, sub: Boolean(r.agent) }), r)
+    count(hours, `${day(r.at)}|${new Date(r.at).getHours()}`, tokens(r))
 
     if (agents[r.agent]) {
       add(agents[r.agent], r).model = r.model
@@ -413,21 +501,58 @@ const summarize = s => {
 
   for (const use of s.uses) {
     const counted = tool(use.name)
+    const daily = on(use.at)
+    const isDone = !use.isError
     counted.calls++
-    counted.errors += use.isError ? 1 : 0
+    counted.errors += isDone ? 0 : 1
+    counted.chars += use.chars ?? 0
+    daily.calls++
+    daily.fails += isDone ? 0 : 1
+    daily.added += use.add ?? 0
+    daily.removed += use.del ?? 0
+    daily.commits += isDone && use.git === 'commit' ? 1 : 0
+    daily.prs += isDone && use.git === 'pr' ? 1 : 0
+
+    if (use.add !== undefined) {
+      daily.files.add(use.file)
+    }
+
+    if (use.skill) {
+      count(skills, use.skill)
+    }
 
     if (agents[use.agent]) {
       agents[use.agent].toolCalls++
     }
   }
 
-  for (const row of s.rows.filter(row => row.ev === 'tool')) {
-    const timed = tool(row.tool)
-    const ms = row.at - row.startedAt
-    timed.timed++
-    timed.ms += ms
-    timed.maxMs = Math.max(timed.maxMs, ms)
+  for (const row of s.rows) {
+    if (row.ev === 'tool') {
+      const timed = tool(row.tool)
+      const ms = row.at - row.startedAt
+      timed.timed++
+      timed.ms += ms
+      timed.maxMs = Math.max(timed.maxMs, ms)
+      timed.denied += row.outcome === 'denied' && asked.has(row.id) ? 1 : 0
+    } else if (row.ev === 'ask') {
+      tool(row.tool).asked++
+      asked.add(row.id)
+    } else if (row.ev === 'command') {
+      count(commands, row.command)
+    }
+
+    for (const [event, ran] of Object.entries(row.hooks ?? {})) {
+      const held = (hooks[event] ??= { n: 0, ms: 0, blocked: 0 })
+      held.n += ran.n
+      held.ms += ran.ms
+      held.blocked += ran.blocked
+    }
   }
+
+  const log = logOf(s)
+  const end = Math.max(...times)
+  const reads = s.uses.filter(use => use.name === 'Read' && !use.agent && use.chars).sort((a, b) => b.chars - a.chars)
+  const fails = s.uses.filter(use => use.isError).sort((a, b) => b.at - a.at)
 
   return {
     id: s.id,
@@ -435,7 +560,9 @@ const summarize = s => {
     project: path.basename(cwd) || facts.folder || '',
     cwd,
     start: Math.min(...times),
-    end: Math.max(...times),
+    end,
+    live: !log?.endReason && Date.now() - end < LIVE_MS,
+    model: s.requests.findLast(r => !r.agent)?.model ?? null,
     version: facts.version ?? null,
     entrypoint: facts.entrypoint ?? null,
     prompts: prompts.length,
@@ -443,7 +570,14 @@ const summarize = s => {
     usage: Object.values(buckets),
     tools,
     agents: Object.values(agents),
-    log: logOf(s),
+    hours,
+    days: Object.values(days).map(daily => ({ ...daily, files: daily.files.size })),
+    fails: fails.slice(0, 5).map(use => ({ at: use.at, tool: use.name, text: use.err ?? '' })),
+    reads: reads.slice(0, 5).map(use => ({ at: use.at, file: use.file, tokens: Math.round(use.chars / CHARS_PER_TOKEN) })),
+    skills,
+    commands,
+    hooks,
+    log,
   }
 }
 
@@ -467,6 +601,7 @@ const detail = async s => {
       at: prompt.at,
       end: made.at(-1)?.at ?? prompt.at,
       prompt: prompt.text,
+      model: made.at(-1)?.model ?? null,
       ...made.reduce((total, r) => add(total, r), zeros()),
       toolCalls: s.uses.filter(use => !use.agent && inTurn(use)).length,
       log: ended
@@ -487,6 +622,8 @@ const detail = async s => {
   const events = [
     ...s.rows.filter(row => row.ev === 'session.start').map(row => ({ at: row.at, kind: row.ev, detail: [row.model, row.surface, row.version].filter(Boolean).join(', ') })),
     ...s.rows.filter(row => row.ev === 'session.end').map(row => ({ at: row.at, kind: row.ev, detail: row.reason })),
+    ...s.rows.filter(row => row.ev === 'tool' && row.outcome === 'denied').map(row => ({ at: row.at, kind: 'tool.denied', detail: row.tool })),
+    ...s.files.filter(f => f.agent).map(f => ({ at: f.end, kind: 'subagent.end', detail: [f.meta?.agentType, f.meta?.description].filter(Boolean).join(': ') })),
     ...compacts.map(c => ({
       at: c.at,
       kind: 'compact',
@@ -508,67 +645,141 @@ const detail = async s => {
     toolCalls: run.totalToolCalls ?? 0,
   }))
 
-  return { session: summarize(s), turns, events, workflows }
+  const compactions = compacts.filter(c => !c.skip).map(c => ({ at: c.at, before: c.tokensBefore ?? null, after: c.tokensAfter ?? null }))
+
+  return { session: summarize(s), turns, events, workflows, compactions }
 }
 
-/** One content block as the chat viewer shows it. */
-const blockOf = block => {
-  const clip = text => (text.length > BLOCK_CHARS ? `${text.slice(0, BLOCK_CHARS)}\n… ${text.length - BLOCK_CHARS} more characters` : text)
+/** A text cut to the characters the page shows. */
+const clip = text => (text.length > BLOCK_CHARS ? `${text.slice(0, BLOCK_CHARS)}\n… ${text.length - BLOCK_CHARS} more characters` : text)
 
-  switch (block.type) {
-    case 'text':
-      return { type: 'text', text: clip(block.text) }
-    case 'thinking':
-      return { type: 'thinking', text: clip(block.thinking ?? '') }
-    case 'tool_use':
-      return { type: 'tool_use', id: block.id, name: block.name, text: clip(JSON.stringify(block.input, null, 1)) }
-    case 'tool_result':
-      return { type: 'tool_result', id: block.tool_use_id, isError: Boolean(block.is_error), text: clip(textOf(block.content)) }
-    case 'image':
-      return { type: 'image' }
-    default:
-      return undefined
-  }
+/** A tool call's input in a few words: the file, command, pattern or address it names. */
+const argOf = (input = {}) => {
+  const file = input.file_path ?? input.path
+  const named = input.command ?? input.pattern ?? input.url ?? input.query ?? input.skill ?? input.description ?? ''
+
+  return file ? String(file).split(/[\\/]/).slice(-2).join('/') : firstLine(String(named), 60)
 }
 
-/** The messages of one transcript file, an assistant response's rows merged into one message. */
-const chat = async file => {
-  const messages = []
-  const byResponse = {}
-  const names = {}
+/** The turns of one transcript file: each prompt with the tool calls, the reply and the requests that answered it. */
+const chat = async (file, s, isAgent) => {
+  const turns = []
+  const calls = {}
+  const took = Object.fromEntries(s.rows.filter(row => row.ev === 'tool').map(row => [row.id, row.at - row.startedAt]))
+  const spawned = Object.fromEntries(s.files.filter(f => f.agent).map(f => [f.meta?.toolUseId, f.agent]))
+  let turn
 
   for await (const r of lines(file, isRead)) {
     if ((r.type !== 'user' && r.type !== 'assistant') || r.isMeta || !r.message) {
       continue
     }
 
+    const at = Date.parse(r.timestamp)
     const content = typeof r.message.content === 'string' ? [{ type: 'text', text: r.message.content }] : r.message.content ?? []
-    const blocks = content.map(blockOf).filter(Boolean)
-    const u = r.message.usage
 
-    for (const block of blocks) {
-      if (block.type === 'tool_use') {
-        names[block.id] = block.name
-      } else if (block.type === 'tool_result') {
-        block.name = names[block.id]
+    if (r.type === 'user' && (isAgent ? !r.toolUseResult && textOf(content).trim() : isPrompt(r))) {
+      turns.push((turn = { at, end: at, prompt: clip(textOf(content).trim()), tools: [], reply: '', model: null, requests: {} }))
+    } else if (turn) {
+      turn.end = at || turn.end
+
+      for (const block of content) {
+        if (block.type === 'text' && r.type === 'assistant') {
+          turn.reply = clip(block.text)
+        } else if (block.type === 'tool_use') {
+          turn.tools.push((calls[block.id] = { name: block.name, arg: argOf(block.input), ms: took[block.id] ?? null, isError: false, agent: spawned[block.id] ?? null }))
+        } else if (block.type === 'tool_result' && block.is_error && calls[block.tool_use_id]) {
+          calls[block.tool_use_id].isError = true
+        }
       }
-    }
-    const usage = u && { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0, cacheWrite1h: u.cache_creation?.ephemeral_1h_input_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0, fast: u.speed === 'fast', model: r.message.model }
-    const held = r.type === 'assistant' && byResponse[r.message.id]
 
-    if (held) {
-      held.blocks.push(...blocks)
-    } else {
-      const message = { at: Date.parse(r.timestamp), role: r.type, model: r.message.model ?? null, usage: usage ? { ...usage, cost: cost(usage) } : null, blocks }
-      messages.push(message)
-
-      if (r.type === 'assistant') {
-        byResponse[r.message.id] = message
+      if (r.type === 'assistant' && r.message.usage && r.message.model !== '<synthetic>') {
+        turn.model = r.message.model
+        turn.requests[r.requestId ?? r.message.id] = usageOf(r.message)
       }
     }
   }
 
-  return { messages: messages.filter(message => message.blocks.length) }
+  return { turns: turns.map(({ requests, ...kept }) => ({ ...kept, ...Object.values(requests).reduce((total, r) => add(total, { ...r, cost: cost(r) }), zeros()) })) }
+}
+
+/** A JSON file's value, or the fallback when the file holds none. */
+const readJson = (file, fallback) => fsp.readFile(file, 'utf8').then(JSON.parse).catch(() => fallback)
+
+/** What one cache miss costs a session, in dollars: its context written to the cache again, not read from it. */
+const missOf = s => {
+  const last = s.requests.findLast(r => !r.agent)
+  const price = last && rate(last.model)
+  const written = s.requests.reduce((total, r) => total + r.cacheWrite, 0)
+  const hourly = written ? s.requests.reduce((total, r) => total + r.cacheWrite1h, 0) / written : 0
+  const write = PRICES.write5m + (PRICES.write1h - PRICES.write5m) * hourly
+
+  return price ? ((last.input + last.cacheRead + last.cacheWrite) * (price.input * write - price.read)) / 1e6 : 0
+}
+
+/** The loaded items, the rules on them and what applying a change costs, as /api/context sends them. */
+const context = async () => {
+  const [catalog, { rules = {}, order = null, cap, prev }] = await Promise.all([readJson(CONTEXT, {}), readJson(RULES, {})])
+  const sessions = [...built.sessions.values()]
+  const lastAt = s => Math.max(0, ...s.files.map(f => f.end), s.rows.at(-1)?.at ?? 0)
+  const open = sessions.filter(s => Date.now() - lastAt(s) < OPEN_MS && !s.rows.some(row => row.ev === 'session.end'))
+  const reads = sessions.flatMap(s => s.uses.filter(use => use.name === 'Read' && !use.agent && use.chars && Date.now() - use.at < 30 * 86_400_000))
+
+  return {
+    sessions: Object.keys(catalog.sessions ?? {}).length,
+    items: Object.entries(catalog.items ?? {}).map(([id, { at, ...item }]) => ({
+      id,
+      ...item,
+      tok: item.tok ?? Math.round(item.chars / CHARS_PER_TOKEN),
+      seen: item.kind === 'blocks' || item.name === 'skill_listing' ? built.blocks[item.name] ?? 0 : undefined,
+    })),
+    rules,
+    order,
+    cap: { ...NO_CAP, ...cap },
+    canUndo: Boolean(prev),
+    open: open.length,
+    miss: open.reduce((total, s) => total + missOf(s), 0),
+    reads: reads.sort((a, b) => b.chars - a.chars).slice(0, 12).map(use => ({ file: use.file, tokens: Math.round(use.chars / CHARS_PER_TOKEN) })),
+  }
+}
+
+/** A request's JSON body. */
+const bodyOf = async request => {
+  let text = ''
+
+  for await (const chunk of request) {
+    text += chunk
+
+    if (text.length > BODY_CHARS) {
+      throw new Error('body too large')
+    }
+  }
+
+  return JSON.parse(text)
+}
+
+/** The rules a posted document holds, or undefined when it is not a rules document. */
+const rulesOf = ({ rules = {}, order = null, cap = {} }) => {
+  const isRule = rule => ACTIONS.has(rule?.a) && (rule.text === undefined || typeof rule.text === 'string')
+  const isOrder = order === null || (Array.isArray(order) && order.every(id => typeof id === 'string'))
+
+  return typeof rules === 'object' && Object.values(rules).every(isRule) && isOrder
+    ? { rules, order, cap: { on: Boolean(cap.on), k: Math.min(1000, Math.max(1, Number(cap.k) || NO_CAP.k)), part: cap.part !== false } }
+    : undefined
+}
+
+/** Writes the posted rules, or the ones before the last write when the post asks to undo; resolves whether it wrote. */
+const applyRules = async request => {
+  const [posted, { prev, ...before }] = await Promise.all([bodyOf(request), readJson(RULES, {})])
+  const next = posted.undo ? prev : rulesOf(posted)
+
+  if (!next) {
+    return false
+  }
+
+  await fsp.mkdir(HOME, { recursive: true })
+  await fsp.writeFile(RULES, JSON.stringify(posted.undo ? next : { ...next, prev: before }))
+
+  return true
 }
 
 /** The price table as the page shows it: dollars per million tokens, by model prefix. */
@@ -586,10 +797,12 @@ const routes = {
   '/api/session': id => built.sessions.has(id) && detail(built.sessions.get(id)),
   '/api/chat': (id, query) => {
     const agent = query.get('agent')
-    const file = built.sessions.get(id)?.files.find(f => (agent ? f.agent === agent : !f.agent))
+    const s = built.sessions.get(id)
+    const file = s?.files.find(f => (agent ? f.agent === agent : !f.agent))
 
-    return file && chat(file.file)
+    return file && chat(file.file, s, Boolean(agent))
   },
+  '/api/context': context,
 }
 
 http
@@ -598,9 +811,21 @@ http
     const [, route, id] = /^(\/api\/[a-z]+)(?:\/([^/]+))?$/.exec(url.pathname) ?? []
     const send = (status, type, body) => response.writeHead(status, { 'content-type': `${type}; charset=utf-8`, 'cache-control': 'no-store' }).end(body)
 
+    const { host, origin } = request.headers
+
     try {
+      if (!HOSTS.has(host) || (origin && origin !== `http://${host}`)) {
+        return send(403, 'application/json', '{"error":"forbidden"}')
+      }
+
       if (request.method === 'POST' && url.pathname === '/api/stop') {
         return response.end('{}', () => process.exit())
+      }
+
+      if (request.method === 'POST') {
+        const isRules = url.pathname === '/api/rules' && request.headers['content-type']?.startsWith('application/json')
+
+        return isRules && (await applyRules(request)) ? send(200, 'application/json', '{}') : send(400, 'application/json', '{"error":"not a rules document"}')
       }
 
       if (!routes[route]) {

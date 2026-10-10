@@ -6,137 +6,207 @@
 <title>Claude Code usage</title>
 <style>
 :root {
-  color-scheme: light dark;
-  --page: #eef2ec; --surface: #f7f9f5; --ink: #16211b; --ink2: #4c5b52;
-  --rule: #d3dbd2; --rule2: #a9b5ab; --wash: rgba(22,33,27,.06);
-  --accent: #1b6b4a; --critical: #b3312b;
-  --s1: #1b6b4a; --s2: #2f62b0; --s3: #c25a26; --s4: #a67a0a;
-  --din: Bahnschrift, "DIN Alternate", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+  color-scheme: dark;
+  --page: #0b0b0a; --surface: #151514; --raised: #232321; --ink: #f7f6f2; --ink2: #bdbcb2; --muted: #85837c;
+  --grid: #222220; --axis: #35352f; --line: rgba(255,255,255,.09); --wash: rgba(255,255,255,.05);
+  --plan: #ecebe4; --glow: rgba(236,235,228,.3); --shade: rgba(0,0,0,.5);
+  --m1: #3987e5; --m2: #d95926; --m3: #199e70; --m4: #c98500; --good: #0ca30c; --warn: #fab219; --crit: #d03b3b;
 }
-@media (prefers-color-scheme: dark) {
+@media (prefers-color-scheme: light) {
   :root {
-    --page: #101613; --surface: #17201b; --ink: #e2eae4; --ink2: #a5b4aa;
-    --rule: #25302a; --rule2: #3b4a41; --wash: rgba(226,234,228,.07);
-    --accent: #5dbb8f; --critical: #f0776c;
-    --s1: #5dbb8f; --s2: #6c9be6; --s3: #e2824c; --s4: #d2a93a;
+    color-scheme: light;
+    --page: #f1f1ee; --surface: #fcfcfb; --raised: #ecebe6; --ink: #0b0b0b; --ink2: #52514e; --muted: #6e6c67;
+    --grid: #eae9e3; --axis: #cdccc4; --line: rgba(11,11,11,.1); --wash: rgba(11,11,11,.045);
+    --plan: #2b2a27; --glow: rgba(0,0,0,0); --shade: rgba(0,0,0,.18);
+    --m1: #2a78d6; --m2: #eb6834; --m3: #1baf7a; --m4: #eda100;
   }
 }
+html, body, body * { scrollbar-width: none; }
+::-webkit-scrollbar { display: none; }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 var(--din); }
-html { accent-color: var(--accent); caret-color: var(--accent); scrollbar-color: var(--rule2) transparent; }
-::selection { background: var(--accent); color: var(--page); }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-a { color: var(--accent); text-underline-offset: 3px; }
-header, #filters, main { max-width: 1500px; margin: 0 auto; padding: 0 20px; }
-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; padding-top: 14px; }
-h1 { font-size: 18px; font-weight: 600; margin: 0; }
-h1.title { font-size: 22px; margin: 8px 0 6px; overflow-wrap: anywhere; }
-h2 { font-size: 15px; font-weight: 600; margin: 0 0 10px; }
-nav { display: flex; flex-wrap: wrap; gap: 2px; flex: 1; }
-nav a { padding: 6px 10px; border-bottom: 2px solid transparent; color: var(--ink2); text-decoration: none; }
-nav a:hover { color: var(--ink); }
-nav a[aria-current] { color: var(--ink); border-color: var(--accent); }
-tr.click:hover, button:hover { background: var(--wash); }
-#filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 12px; }
-button, select, input { font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--rule2); border-radius: 6px; padding: 4px 12px; min-height: 32px; transition: background-color .15s; }
-button { cursor: pointer; }
-button:active { transform: translateY(1px); }
-button[aria-pressed=true] { background: var(--ink); color: var(--page); border-color: var(--ink); }
-.seg { display: inline-flex; }
-.seg button { border-radius: 0; margin-left: -1px; }
-.seg button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
-.seg button:last-child { border-radius: 0 6px 6px 0; }
-.field { display: grid; gap: 4px; width: 280px; max-width: 100%; margin-bottom: 12px; color: var(--ink2); font-size: 12.5px; }
-.field input { font-size: 14px; color: var(--ink); }
-main { padding-top: 22px; padding-bottom: 48px; display: grid; gap: 28px; transition: opacity .15s; }
-main > * { min-width: 0; }
-.busy main { opacity: .5; }
-.block { border-top: 1px solid var(--rule2); padding-top: 12px; min-width: 0; }
-.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 28px; }
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 18px 0; }
-.tile { border-left: 1px solid var(--rule2); padding: 0 16px; display: grid; gap: 2px; align-content: start; min-width: 0; }
-.tile span, .tile small, .dim, .meta, .meter > span, .read span { color: var(--ink2); }
-.tile b { font-size: 26px; font-weight: 500; font-stretch: 87.5%; line-height: 1.15; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.tile small, .meta { font-size: 12.5px; }
-.meta { overflow-wrap: anywhere; margin: 0; }
-.meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr)); gap: 24px 48px; }
-.read { display: flex; align-items: baseline; gap: 8px; margin: 2px 0 10px; }
-.read b { font-size: 52px; font-weight: 600; font-stretch: 75%; line-height: 1; font-variant-numeric: tabular-nums; }
-.scale { position: relative; height: 20px; border-bottom: 1px solid var(--ink2); border-right: 1px solid var(--ink2);
-  background: linear-gradient(90deg, var(--ink2) 1px, transparent 1px) 0 0 / 25% 100% repeat-x,
-    linear-gradient(90deg, var(--rule2) 1px, transparent 1px) 0 100% / 5% 7px repeat-x; }
-.scale i { position: absolute; left: 0; bottom: 0; height: 9px; min-width: 2px; background: var(--accent); }
-.scale i::after { content: ""; position: absolute; right: 0; bottom: 0; width: 2px; height: 20px; background: var(--ink); }
-.hot .scale i { background: var(--critical); }
-.hot .read span { color: var(--critical); font-weight: 600; }
-.stale .scale i { background: var(--rule2); }
-.stale .read b { color: var(--ink2); }
-.ticks { display: grid; grid-template-columns: repeat(4, 1fr) 0; margin: 3px 0 6px; font-size: 12px; color: var(--ink2); font-variant-numeric: tabular-nums; }
-.ticks span { padding-left: 3px; }
-.ticks span:last-child { justify-self: end; padding: 0 3px 0 0; }
-.facts { display: flex; flex-wrap: wrap; gap: 2px 24px; margin: 0; font-size: 13px; }
-.facts dt, .facts dd { display: inline; margin: 0; overflow-wrap: anywhere; }
-.facts dt { color: var(--ink2); margin-right: 6px; }
-.tw { overflow-x: auto; margin-inline: -10px; }
-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
-th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--rule); white-space: nowrap; max-width: 380px; overflow: hidden; text-overflow: ellipsis; }
-th { color: var(--ink2); font-weight: 600; font-size: 12.5px; border-bottom-color: var(--ink2); user-select: none; }
-th.sortable { cursor: pointer; }
-th.sortable:hover { color: var(--ink); }
-th[aria-sort=ascending]::after, th[aria-sort=descending]::after { content: ""; display: inline-block; margin-left: 6px; vertical-align: 2px; border: 4px solid transparent; }
-th[aria-sort=ascending]::after { border-top: 0; border-bottom-color: currentColor; }
-th[aria-sort=descending]::after { border-bottom: 0; border-top-color: currentColor; }
-th:focus-visible, tr:focus-visible { outline-offset: -2px; }
-.num { text-align: right; }
-td.num { font-stretch: 87.5%; }
-tr.click { cursor: pointer; }
-.more { margin: 8px 10px 0; }
-.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 6px; font-size: 12.5px; color: var(--ink2); }
-.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; }
-svg { display: block; }
-svg text { font-size: 11.5px; fill: var(--ink2); font-variant-numeric: tabular-nums; }
-svg text.val { fill: var(--ink); }
-svg text.cat { font-size: 12.5px; }
-.grid { stroke: var(--rule); }
-.base { stroke: var(--rule2); }
-.line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.dot { stroke: var(--page); stroke-width: 2; }
-.hover { pointer-events: none; }
-.hover rect { fill: var(--wash); }
-#tip { position: fixed; z-index: 9; pointer-events: none; background: var(--surface); border: 1px solid var(--rule2); border-radius: 6px; padding: 6px 10px; font-size: 12.5px; box-shadow: 0 6px 18px rgba(16,22,19,.22); color: var(--ink2); }
-#tip b { display: block; color: var(--ink); margin-bottom: 2px; }
-#tip strong { color: var(--ink); }
-#tip i { display: inline-block; width: 10px; height: 2px; vertical-align: middle; margin-right: 6px; }
-pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px/1.5 "Cascadia Code", ui-monospace, Consolas, monospace; }
-.msg { border-top: 1px solid var(--rule); padding: 10px 0; display: grid; gap: 6px; }
-.msg.user { background: var(--wash); border-radius: 6px; padding: 10px; }
-.msg .meta { display: flex; flex-wrap: wrap; gap: 2px 14px; }
-.msg .meta b { color: var(--ink); }
-details > pre { padding: 8px; background: var(--wash); border-radius: 6px; margin-top: 4px; max-height: 420px; overflow: auto; }
-summary { cursor: pointer; color: var(--ink2); font-size: 12.5px; }
-details.dim { opacity: .8; }
-details.err > summary, .err { color: var(--critical); font-weight: 600; }
+body { margin: 0; height: 100vh; min-width: 1200px; display: grid; grid-template-rows: 56px minmax(0, 1fr); background: var(--page); color: var(--ink); font: 13px/1.4 Geist, "Segoe UI", system-ui, sans-serif; }
+button, input, textarea { font: inherit; }
 [hidden] { display: none !important; }
-@media (max-width: 760px) {
-  nav { order: 3; flex-basis: 100%; flex-wrap: nowrap; overflow-x: auto; }
-  nav a { white-space: nowrap; }
-}
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } button:active { transform: none; } }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes reveal { from { clip-path: inset(-14px 100% -14px -14px); } to { clip-path: inset(-14px -14px -14px -14px); } }
+@keyframes growy { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes growx { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes pop { 0% { transform: scale(0); } 70% { transform: scale(1.3); } to { transform: scale(1); } }
+@keyframes ping { from { transform: scale(1); opacity: .5; } to { transform: scale(3.4); opacity: 0; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes menu { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes dialog { from { opacity: 0; transform: translateY(12px) scale(.97); } to { opacity: 1; transform: none; } }
+header { display: flex; align-items: center; gap: 24px; padding: 0 20px; position: relative; z-index: 30; }
+header nav { display: flex; gap: 2px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 14px; }
+.tools { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+main { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); padding: 4px 16px 16px; min-height: 0; transition: opacity .25s; }
+.busy main { opacity: .35; pointer-events: none; }
+.grid12 { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px; min-height: 0; overflow: auto; border-radius: 16px; }
+.panes { display: grid; gap: 12px; min-height: 0; }
+.panel { background: var(--surface); border-radius: 16px; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; animation: rise .7s cubic-bezier(.2,.7,.2,1) both; }
+.pad { padding: 18px 22px 14px; }
+.ph { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 24px 8px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.col { display: flex; flex-direction: column; min-width: 0; }
+.fill { flex: 1; min-height: 0; }
+.scroll { overflow: auto; }
+.scroll > * { flex: none; }
+.el { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.h { margin: 0; font-size: 13px; font-weight: 500; color: var(--ink2); }
+.sub { color: var(--muted); font-size: 12px; }
+.note { padding: 24px; margin: 0; }
+.tn { font-variant-numeric: tabular-nums; }
+.mono { font-family: "Geist Mono", ui-monospace, Consolas, monospace; font-size: 11.5px; }
+.r { text-align: right; }
+.big { font-size: 26px; font-weight: 500; letter-spacing: -.02em; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.huge { font-size: 44px; font-weight: 500; line-height: .95; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.huge small { font-size: 20px; color: var(--muted); letter-spacing: 0; margin-left: 2px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+.sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; }
+.key { display: inline-flex; align-items: center; gap: 6px; }
+.legend { display: flex; gap: 16px; }
+.track { display: block; height: 6px; border-radius: 3px; background: var(--wash); overflow: hidden; }
+.track i { display: block; height: 100%; border-radius: 3px; }
+.live { position: relative; }
+.live::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: inherit; animation: ping 2s cubic-bezier(0,0,.2,1) infinite; }
+.seg { display: inline-flex; padding: 2px; gap: 2px; background: var(--wash); border-radius: 9px; justify-self: start; }
+.seg button { font-size: 12px; font-weight: 500; color: var(--muted); background: transparent; border: 0; border-radius: 7px; padding: 0 10px; height: 26px; cursor: pointer; white-space: nowrap; transition: color .2s, background .2s; }
+.seg button:hover { color: var(--ink); }
+.seg button[aria-pressed=true] { background: var(--raised); color: var(--ink); }
+.tab { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 500; cursor: pointer; transition: color .2s, background .2s; }
+.tab:hover { color: var(--ink); }
+.tab[aria-pressed=true] { color: var(--ink); background: var(--wash); }
+.ctl { color: var(--ink2); background: var(--wash); border: 0; border-radius: 9px; height: 30px; padding: 0 10px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 10px; flex: none; transition: background .2s, color .2s; }
+.ctl:hover, .ctl[aria-expanded=true] { background: var(--raised); color: var(--ink); }
+.ctl.wide { width: 100%; height: 34px; margin-top: auto; }
+.chev { transition: transform .2s; flex: none; }
+.chev.open { transform: rotate(180deg); }
+.busy .spin { animation: spin .8s linear infinite; }
+.veil { position: fixed; inset: 0; border: 0; padding: 0; background: transparent; cursor: default; }
+.menu { position: absolute; right: 0; top: 36px; width: 236px; background: var(--raised); border: 1px solid var(--line); border-radius: 12px; padding: 5px; box-shadow: 0 18px 44px var(--shade); transform-origin: top right; animation: menu .16s cubic-bezier(.2,.8,.2,1) both; }
+.opt { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; height: 32px; padding: 0 10px; color: var(--ink2); text-align: left; background: transparent; border: 0; border-radius: 8px; cursor: pointer; transition: background .15s, color .15s; }
+.opt:hover { background: var(--wash); color: var(--ink); }
+.opt[aria-selected=true] { color: var(--ink); }
+.opt[aria-selected=false] svg { opacity: 0; }
+.modal { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; }
+.scrim { position: absolute; inset: 0; border: 0; padding: 0; background: var(--shade); cursor: default; animation: fade .2s both; }
+.dialog { position: relative; max-width: calc(100% - 48px); padding: 6px 0 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 30px 80px var(--shade); animation: dialog .28s cubic-bezier(.2,.8,.2,1) both; }
+.off { opacity: .35; pointer-events: none; }
+.strip { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1px; background: var(--grid); }
+.kpi { color: inherit; text-align: left; background: var(--surface); border: 0; padding: 0 20px; display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; transition: background .2s; }
+.kpi .row { white-space: nowrap; gap: 8px; }
+button.kpi { cursor: pointer; }
+button.kpi:hover { background: var(--raised); }
+.wrow { display: grid; align-items: center; gap: 12px; height: 31px; color: inherit; text-align: left; background: transparent; border: 0; border-radius: 8px; padding: 0 8px; margin: 0 -8px; width: calc(100% + 16px); transition: background .2s, opacity .3s; }
+.wrow:hover { background: var(--wash); }
+.slot { display: block; height: 10px; position: relative; }
+.slot i { display: block; height: 100%; min-width: 2px; border-radius: 0 5px 5px 0; background: var(--plan); }
+.slot.thin { height: 8px; }
+.slot.twin i { position: absolute; inset: 0 auto 0 0; transition: width .3s; }
+.stack { display: flex; gap: 2px; height: 10px; }
+.stack i { border-radius: 0; min-width: 0; }
+.stack i:last-child { border-radius: 0 5px 5px 0; }
+.item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; width: 100%; padding: 9px 12px; flex: none; color: inherit; text-align: left; background: transparent; border: 0; border-radius: 11px; cursor: pointer; transition: background .2s; }
+.item:hover { background: var(--wash); }
+.item[aria-pressed=true] { background: var(--raised); }
+.item b, .tr b { font-weight: 500; }
+.items { overflow: auto; padding: 0 8px 8px; display: flex; flex-direction: column; gap: 2px; }
+.pills { display: flex; gap: 6px; padding: 0 24px 14px; overflow: hidden; }
+.pill { font-size: 12px; color: var(--ink2); background: transparent; border: 1px solid var(--line); border-radius: 999px; height: 28px; padding: 0 12px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background .2s, color .2s, border-color .2s; }
+.pill:hover { color: var(--ink); border-color: var(--axis); }
+.pill[aria-pressed=true] { background: var(--ink); color: var(--page); border-color: var(--ink); }
+.thread { overflow: auto; display: flex; flex-direction: column-reverse; border-top: 1px solid var(--grid); }
+.turns { width: 100%; max-width: 680px; margin: 0 auto; padding: 18px 24px 26px; display: flex; flex-direction: column; gap: 26px; }
+.turn { display: flex; flex-direction: column; gap: 10px; }
+.turn p { margin: 0; font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.said { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+.bubble { font-size: 14px; line-height: 1.5; color: var(--ink); text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--raised); border: 0; border-radius: 18px 18px 5px 18px; padding: 10px 15px; max-width: 78%; cursor: pointer; transition: box-shadow .25s; }
+.bubble:hover { box-shadow: 0 0 0 1px var(--axis); }
+.bubble[aria-pressed=true] { box-shadow: 0 0 0 1.5px var(--ink2); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 7px; height: 26px; max-width: 100%; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; font-family: "Geist Mono", ui-monospace, Consolas, monospace; font-size: 11.5px; color: var(--ink2); white-space: nowrap; overflow: hidden; }
+.chip b { font-weight: 500; color: var(--ink); }
+.card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.rule { display: flex; align-items: center; gap: 12px; }
+.rule::before, .rule::after { content: ""; flex: 1; height: 1px; background: var(--grid); }
+.more { font-size: 12px; color: var(--muted); background: transparent; border: 0; align-self: center; height: 28px; padding: 0 12px; border-radius: 999px; cursor: pointer; transition: color .2s, background .2s; }
+.more:hover { color: var(--ink); background: var(--wash); }
+.step { color: var(--ink2); background: var(--wash); border: 0; border-radius: 8px; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; flex: none; cursor: pointer; transition: background .2s, color .2s; }
+.step:hover { background: var(--raised); color: var(--ink); }
+.go { font-weight: 500; color: var(--page); background: var(--ink); border: 0; border-radius: 9px; height: 34px; padding: 0 14px; cursor: pointer; transition: opacity .2s; }
+.go:hover { opacity: .86; }
+.tog { flex: none; position: relative; width: 36px; height: 20px; padding: 0; border: 0; border-radius: 10px; background: var(--axis); cursor: pointer; transition: background .2s; }
+.tog::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--ink); transition: transform .2s; }
+.tog[aria-checked=true] { background: var(--good); }
+.tog[aria-checked=true]::after { transform: translateX(16px); background: #fff; }
+.set { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 24px; border-top: 1px solid var(--grid); }
+.txt { font-size: 12px; margin: 0; width: 100%; height: 340px; overflow: auto; white-space: pre-wrap; padding: 12px 14px; border: 0; border-radius: 10px; background: var(--wash); color: var(--ink2); line-height: 1.55; resize: none; outline: 0; }
+textarea.txt { color: var(--ink); box-shadow: inset 0 0 0 1px var(--axis); }
+textarea.txt:focus { box-shadow: inset 0 0 0 1.5px var(--ink2); }
+.search { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; background: var(--wash); border-radius: 10px; color: var(--muted); }
+.search input { flex: 1; min-width: 0; color: var(--ink); background: transparent; border: 0; outline: 0; }
+.tr { display: grid; align-items: center; gap: 12px; padding: 0 24px; min-height: 38px; font-variant-numeric: tabular-nums; transition: background .2s, opacity .3s; }
+.tr > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr.th { color: var(--muted); font-size: 12px; min-height: 28px; }
+.tr.top { border-top: 1px solid var(--grid); min-height: 40px; }
+button.tr { color: inherit; text-align: left; width: 100%; background: transparent; border: 0; cursor: pointer; }
+button.tr:hover, button.tr[aria-pressed=true] { background: var(--wash); }
+.link { display: flex; align-items: center; gap: 8px; color: inherit; text-align: left; background: transparent; border: 0; padding: 4px 8px; margin: 0 -8px; border-radius: 8px; cursor: pointer; transition: background .2s; }
+.link:hover { background: var(--wash); }
+.pair { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 12px; margin: 0; padding: 7px 8px; flex: none; }
+.pair .sub:last-child { grid-column: 1 / -1; }
+.line { border-top: 1px solid var(--grid); padding-top: 16px; }
+.foot { padding: 10px 24px 14px; border-top: 1px solid var(--grid); }
+svg text { font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+svg text.v { fill: var(--ink); font-weight: 500; font-size: 12px; }
+.g { stroke: var(--grid); }
+.ax { stroke: var(--axis); }
+.glow { filter: drop-shadow(0 0 6px var(--glow)); }
+.band { transition: x .3s cubic-bezier(.2,.8,.2,1); }
+#tip { position: fixed; z-index: 50; pointer-events: none; display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 5px 8px; min-width: 164px; padding: 10px 12px; background: var(--raised); border-radius: 10px; box-shadow: 0 18px 44px var(--shade); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+#tip b { grid-column: 1 / -1; color: var(--ink); font-weight: 500; font-size: 12px; }
+#tip strong { color: var(--ink); font-weight: 500; text-align: right; }
+#tip i { width: 8px; height: 8px; border-radius: 2px; }
+.ping { transform-box: fill-box; transform-origin: center; opacity: 0; animation: ping 2.4s cubic-bezier(0,0,.2,1) 2.1s infinite; }
+.reveal { animation: reveal 1.5s cubic-bezier(.45,0,.2,1) .2s both; }
+.late { animation: fade .6s ease 1.6s both; }
+.pop { transform-box: fill-box; transform-origin: center; animation: pop .5s cubic-bezier(.3,1.4,.5,1) 1.5s both; }
+.gy { animation: growy 1s cubic-bezier(.2,.8,.2,1) .15s both; }
+.gbar { transform-origin: left; animation: growx .9s cubic-bezier(.2,.8,.2,1) both; }
+.gup { animation: rise .5s cubic-bezier(.2,.7,.2,1) both; }
+.sp { animation: reveal 1.1s cubic-bezier(.45,0,.2,1) .15s both; }
+.gf { animation: fade .7s ease both; }
+.still .panel, .still .gup, .still .gbar, .still .gy, .still .sp { animation: none; }
+@media (prefers-reduced-motion: reduce) { *, *::after { animation: none !important; transition: none !important; } }
 </style>
 </head>
-<body>
-<header><h1>Claude Code usage</h1><nav id="nav"></nav><span id="stamp" class="meta"></span><button id="refresh">Refresh</button></header>
-<div id="filters"></div>
+<body class="busy">
+<header id="head"></header>
 <main id="main"></main>
+<div id="layer"></div>
 <div id="tip" hidden></div>
 <script>
-const NS = 'http://www.w3.org/2000/svg';
-const KEYS = ['requests', 'input', 'output', 'cacheWrite', 'cacheRead', 'cost', 'p5', 'p7'];
-const C = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)'];
-const ROUTES = [['', 'Overview'], ['plan', 'Plan usage'], ['sessions', 'Sessions'], ['agents', 'Agents'], ['tools', 'Tools'], ['models', 'Models and projects'], ['cost', 'Cost']];
-const state = { range: 30, project: '', q: '' };
-const draws = [];
-let data, seq = 0;
+const NS = 'http://www.w3.org/2000/svg', DAY = 864e5;
+// Tokens a deferred tool keeps in every request
+const DEFERRED = 15;
+const KEYS = ['requests', 'input', 'output', 'cacheWrite', 'cacheRead', 'cost', 'cIn', 'cOut', 'cRead', 'cWrite', 'saved', 'p5', 'p7', 'wk'];
+// Model families: id fragment, name, colour
+const FAMILIES = [['fable', 'Fable', 'var(--m1)'], ['opus', 'Opus', 'var(--m2)'], ['sonnet', 'Sonnet', 'var(--m3)'], ['haiku', 'Haiku', 'var(--m4)'], ['', 'Other', 'var(--muted)']];
+const TABS = [['overview', 'Overview'], ['sessions', 'Sessions'], ['tools', 'Tools'], ['breakdown', 'Breakdown'], ['context', 'Context']];
+const TYPES = [['Input', 'input', 'cIn'], ['Output', 'output', 'cOut'], ['Cache read', 'cacheRead', 'cRead'], ['Cache write', 'cacheWrite', 'cWrite']];
+const KINDS = { tools: 'Tools', skills: 'Skills', blocks: 'Injected blocks', sections: 'System prompt', files: 'File reads' };
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+// Icon outlines, 24 by 24, paths split by |
+const ICON = {
+  down: 'M6 9l6 6 6-6', up: 'M6 15l6-6 6 6', prev: 'M15 5l-7 7 7 7', next: 'M9 5l7 7-7 7', check: 'M5 12.5l4.5 4.5L19 7.5', close: 'M6 6l12 12|M18 6L6 18',
+  minus: 'M5 12h14', plus: 'M5 12h14|M12 5v14', reset: 'M4 9h10a5 5 0 0 1 0 10H9|M8 5L4 9l4 4', refresh: 'M20 12a8 8 0 1 1-2.3-5.7|M20 4v5h-5', search: 'M4 11a7 7 0 1 0 14 0a7 7 0 1 0-14 0|M20 20l-3.5-3.5',
+};
+const state = { range: 30, project: '', menu: false, q: '', sort: 'recent', by: 'project', metric: 'tokens', tsort: 'calls', tool: '', extra: 'fails', side: 'tools', kind: 'tools', cf: 'all', openG: { 'Built-in': true } };
+const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+// The usage data, the open session and the context catalog with its draft rules
+let data, cur, cx;
 
 // HTML element builder; string children become text nodes
 const h = (tag, a = {}, ...kids) => {
@@ -146,312 +216,562 @@ const h = (tag, a = {}, ...kids) => {
   return e;
 };
 // SVG element builder
-const svg = (tag, a = {}, text) => {
+const svg = (tag, a = {}) => {
   const e = document.createElementNS(NS, tag);
   for (const [k, v] of Object.entries(a)) e.setAttribute(k, v);
-  if (text != null) e.textContent = text;
   return e;
 };
 const $ = id => document.getElementById(id);
+const icon = (d, size = 12, cls = '') => {
+  const g = svg('svg', { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 2.4, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true', class: cls });
+  g.innerHTML = d.split('|').map(p => `<path d="${p}"/>`).join('');
+  return g;
+};
+// SVG chart from markup; its text is numbers and dates only
+const chart = (box, label, markup, attrs = {}) => {
+  const g = svg('svg', { viewBox: `0 0 ${box}`, width: '100%', height: '100%', ...(label ? { role: 'img', 'aria-label': label } : { 'aria-hidden': 'true' }), ...attrs });
+  g.innerHTML = markup;
+  return g;
+};
 
 // Formatters
 const guard = f => (n, ...r) => Number.isFinite(n) ? f(n, ...r) : '–';
 const fmt = {
   int: guard(n => Math.round(n).toLocaleString('en-US')),
-  num: guard(n => { const a = Math.abs(n), u = a >= 1e9 ? [1e9, 'B'] : a >= 1e6 ? [1e6, 'M'] : a >= 1e3 ? [1e3, 'K'] : [1, '']; return +(n / u[0]).toFixed(a / u[0] >= 100 ? 0 : a / u[0] >= 10 ? 1 : 2) + u[1]; }),
-  usd: guard(n => { const d = n && Math.abs(n) < 0.01 ? 4 : 2; return (n < 0 ? '-$' : '$') + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }); }),
-  pct: guard(n => +n.toFixed(Math.abs(n) < 10 ? 2 : 1) + '%'),
-  dur: guard(ms => ms < 1e3 ? Math.round(ms) + 'ms' : ms < 6e4 ? (ms / 1e3).toFixed(1) + 's' : ms < 36e5 ? `${Math.floor(ms / 6e4)}m ${Math.floor(ms % 6e4 / 1e3)}s` : ms < 864e5 ? `${Math.floor(ms / 36e5)}h ${Math.floor(ms % 36e5 / 6e4)}m` : `${Math.floor(ms / 864e5)}d ${Math.floor(ms % 864e5 / 36e5)}h`),
-  date: guard(ms => new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })),
-  day: d => new Date(d + 'T00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-  signed: n => (n > 0 ? '+' : '') + fmt.usd(n),
+  num: guard(n => n >= 1e9 ? (n / 1e9).toFixed(2) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'K' : String(Math.round(n))),
+  kt: guard(n => n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(Math.round(n))),
+  usd: guard(n => (n < 0 ? '−$' : '$') + Math.abs(n).toFixed(2)),
+  usd0: guard(n => '$' + Math.round(n).toLocaleString('en-US')),
+  pct: guard(n => n.toFixed(1) + '%'),
+  dur: guard(ms => ms < 1e3 ? Math.round(ms) + 'ms' : ms < 6e4 ? (ms / 1e3).toFixed(1) + 's' : ms < 36e5 ? `${Math.floor(ms / 6e4)}m ${Math.floor(ms % 6e4 / 1e3)}s` : ms < DAY ? `${Math.floor(ms / 36e5)}h ${Math.floor(ms % 36e5 / 6e4)}m` : `${Math.floor(ms / DAY)}d ${Math.floor(ms % DAY / 36e5)}h`),
+  clock: guard(ms => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })),
+  date: guard(ms => new Date(ms).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })),
+  day: d => new Date(d + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+  long: d => new Date(d + 'T00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
 };
 
 // Aggregation helpers
-const sum = (rows, f) => rows.reduce((t, r) => t + (f(r) || 0), 0);
+const sum = (rows, f = v => v) => rows.reduce((t, r) => t + (f(r) || 0), 0);
+const div = (a, b) => b ? a / b : 0;
 const tok = o => o.input + o.output + o.cacheWrite + o.cacheRead;
 const agg = rows => { const o = Object.fromEntries(KEYS.map(k => [k, 0])); for (const r of rows) for (const k of KEYS) o[k] += r[k] || 0; o.tokens = tok(o); return o; };
 const groupBy = (rows, f) => { const m = new Map(); for (const r of rows) { const k = f(r); m.has(k) ? m.get(k).push(r) : m.set(k, [r]); } return m; };
 const rollup = (rows, f) => [...groupBy(rows, f)].map(([name, rs]) => ({ name: name ?? '(none)', n: rs.length, rs, ...agg(rs) }));
 const dayOf = ms => { const d = new Date(ms); return new Date(ms - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
+const fam = model => FAMILIES.findIndex(([part]) => String(model).includes(part));
+const hit = t => div(t.cacheRead, t.cacheRead + t.cacheWrite + t.input) * 100;
+const wide = (v, max) => (Math.min(1, div(v, max)) * 100).toFixed(1) + '%';
+const delta = (now, was, pts) => !was ? '' : `${now >= was ? '+' : '−'}${Math.abs(pts ? now - was : (now / was - 1) * 100).toFixed(1)}${pts ? ' pts' : '%'} vs prior`;
+const toolKey = name => { const m = /^mcp__(.+?)__/.exec(name); return m ? `mcp__${m[1]}__*` : name; };
 const get = async u => { const r = await fetch(u); if (!r.ok) throw new Error(`${u} returned ${r.status}`); return r.json(); };
+const go = (view, id) => { const hash = '#/' + view + (id ? '/' + encodeURIComponent(id) : ''); location.hash === hash ? render() : location.hash = hash; };
 
-// Sessions and buckets inside the active date range and project
+// Sessions, buckets and days inside the active date range and project, with the same span before it
 function scope() {
-  const cut = state.range ? dayOf(Date.now() - (state.range - 1) * 864e5) : '';
-  const sessions = data.sessions.filter(s => !state.project || s.project === state.project)
-    .map(s => { const b = s.usage.filter(u => u.day >= cut); return { s, b, t: agg(b) }; }).filter(x => x.b.length || !cut);
-  return { cut, cutMs: cut ? new Date(cut + 'T00:00').getTime() : 0, sessions, buckets: sessions.flatMap(x => x.b.map(b => ({ ...b, s: x.s }))) };
+  const n = state.range, today = dayOf(Date.now()), cut = n ? dayOf(Date.now() - (n - 1) * DAY) : '', before = n ? dayOf(Date.now() - (2 * n - 1) * DAY) : '';
+  const all = data.sessions.filter(s => !state.project || s.project === state.project);
+  const sessions = all.map(s => { const b = s.usage.filter(u => u.day >= cut); return { s, b, t: agg(b) }; }).filter(x => x.b.length);
+  const buckets = sessions.flatMap(x => x.b.map(b => ({ ...b, s: x.s })));
+  const acts = ['calls', 'fails', 'added', 'removed', 'files', 'commits', 'prs'], zero = () => Object.fromEntries(acts.map(k => [k, 0])), old = zero(), at = new Map();
+  for (let d = new Date((cut || buckets.reduce((a, b) => b.day < a ? b.day : a, today)) + 'T00:00'); dayOf(+d) <= today; d.setDate(d.getDate() + 1)) at.set(dayOf(+d), { day: dayOf(+d), b: [], ...zero() });
+  for (const b of buckets) at.get(b.day)?.b.push(b);
+  for (const s of all) for (const d of s.days) { const o = at.get(d.day) || (d.day >= before && d.day < cut && old); if (o) for (const k of acts) o[k] += d[k]; }
+  const D = [...at.values()].map(o => ({ ...o, t: agg(o.b), fam: FAMILIES.map((_, i) => agg(o.b.filter(b => fam(b.model) === i))), sessions: new Set(o.b.map(b => b.s.id)).size }));
+  const was = all.flatMap(s => s.usage.filter(u => u.day >= before && u.day < cut).map(b => ({ ...b, id: s.id })));
+  return { cut, sessions, buckets, days: [...at.keys()], D, t: agg(buckets), act: Object.fromEntries(acts.map(k => [k, sum(D, o => o[k])])), prior: was.length ? { ...old, t: agg(was), sessions: new Set(was.map(b => b.id)).size } : null };
 }
-
-const card = (title, ...kids) => h('section', { className: 'block' }, title && h('h2', {}, title), kids);
-const tiles = list => h('div', { className: 'tiles' }, list.map(([k, v, note]) => h('div', { className: 'tile' }, h('span', {}, k), h('b', {}, v), note && h('small', {}, note))));
-// Keyboard handler that runs f on Enter or Space
-const key = f => e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); f(); } };
-const NONE = 'Nothing in this range. Widen the date range or clear the project filter.';
-
-// Plan window gauges from the latest readings
-const meters = () => card('Plan limits, all projects', h('div', { className: 'meters' }, [['5-hour window', data.plan.fiveHour], ['Weekly window', data.plan.sevenDay]].map(([name, rs]) => {
-  const r = rs.at(-1);
-  if (!r) return h('div', { className: 'meter' }, h('span', {}, name), h('p', { className: 'dim' }, 'No reading yet. Readings start when the usage-log mod loads.'));
-  const left = r.resetsAt - Date.now(), stale = left <= 0, hot = !stale && r.percent >= 80;
-  return h('div', { className: 'meter' + (stale ? ' stale' : hot ? ' hot' : '') }, h('span', {}, name),
-    h('div', { className: 'read' }, h('b', {}, fmt.pct(r.percent)), h('span', {}, stale ? 'at the last reading' : r.percent >= 100 ? 'used, limit reached' : hot ? 'used, near the limit' : 'used')),
-    h('div', { className: 'scale', role: 'meter', 'aria-label': name + ' used', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': r.percent }, h('i', { style: `width:${Math.min(100, r.percent)}%` })),
-    h('div', { className: 'ticks' }, [0, 25, 50, 75, 100].map(t => h('span', {}, String(t)))),
-    h('p', { className: 'meta' }, stale ? `That window reset ${fmt.date(r.resetsAt)}. No reading since.` : `${Number.isFinite(left) ? `Resets in ${fmt.dur(left)}. ` : ''}Read ${fmt.date(r.at)}.`));
-})));
-
-// Sortable table; cols are [label, value(row), format(value, row)]
-function table(cols, rows, { sort = -1, desc = true, click, fixed, limit = 200, empty = NONE } = {}) {
-  if (!rows.length) return h('p', { className: 'dim' }, empty);
-  const isNum = cols.map(c => typeof c[1](rows[0]) === 'number'), tbody = h('tbody');
-  const more = h('button', { className: 'more', onclick: () => { limit = Infinity; fill(); } }, `Show all ${rows.length}`);
-  const heads = cols.map((c, i) => {
-    const go = () => { desc = sort === i ? !desc : isNum[i]; sort = i; fill(); };
-    return h('th', { className: (isNum[i] ? 'num ' : '') + (fixed ? '' : 'sortable'), tabIndex: fixed ? null : 0, onclick: !fixed && go, onkeydown: !fixed && key(go) }, c[0]);
-  });
-  const cmp = (a, b) => a == null || b == null ? (a == null) - (b == null) : (typeof a === 'string' ? a.localeCompare(b) : a - b) * (desc ? -1 : 1);
-  const fill = () => {
-    const v = sort < 0 ? null : cols[sort][1], sorted = v ? [...rows].sort((a, b) => cmp(v(a), v(b))) : rows;
-    if (!fixed) heads.forEach((th, i) => th.setAttribute('aria-sort', i === sort ? (desc ? 'descending' : 'ascending') : 'none'));
-    tbody.replaceChildren(...sorted.slice(0, limit).map(r => h('tr', { className: click ? 'click' : '', tabIndex: click ? 0 : null, onclick: click && (() => click(r)), onkeydown: click && key(() => click(r)) }, cols.map(([, val, f]) => {
-      const x = val(r);
-      return h('td', { className: typeof x === 'number' ? 'num' : '', title: typeof x === 'string' && x.length > 30 ? x : null }, x == null ? '–' : f ? f(x, r) : x);
-    }))));
-    more.hidden = rows.length <= limit;
-  };
-  fill();
-  return h('div', { className: 'tw' }, h('table', {}, h('thead', {}, h('tr', {}, heads)), tbody), more);
-}
-
-// Axis scale with round tick values
-const nice = max => {
-  if (!(max > 0)) max = 1;
-  const raw = max / 4, mag = 10 ** Math.floor(Math.log10(raw)), step = [1, 2, 5, 10].find(s => s * mag >= raw) * mag, top = Math.ceil(max / step - 1e-9) * step;
-  return { top, ticks: Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step) };
+// Tools of the sessions in scope, an MCP server's tools folded into one row
+const toolRows = sessions => {
+  const m = new Map();
+  for (const { s } of sessions) for (const [name, v] of Object.entries(s.tools)) {
+    const id = toolKey(name), o = m.get(id) || m.set(id, { name: id, server: /^mcp__(.+?)__/.exec(name)?.[1], calls: 0, errors: 0, timed: 0, ms: 0, chars: 0, asked: 0, denied: 0, kinds: new Set() }).get(id);
+    for (const k of ['calls', 'errors', 'timed', 'ms', 'chars', 'asked', 'denied']) o[k] += v[k] || 0;
+    o.kinds.add(name);
+  }
+  return [...m.values()];
 };
-// Bar outline with a rounded data end
-const barPath = (x, y, w, l, round, hz) => {
-  const r = round ? Math.min(4, w / 2, l) : 0;
-  return hz ? `M${x},${y}h${l - r}q${r},0 ${r},${r}v${w - 2 * r}q0,${r} ${-r},${r}h${r - l}z` : `M${x},${y + l}v${r - l}q0,${-r} ${r},${-r}h${w - 2 * r}q${r},0 ${r},${r}v${l - r}z`;
+
+// Shared pieces
+const panel = (style, cls, ...kids) => h('section', { className: 'panel ' + cls, style }, kids);
+const title = (text, note) => h('h2', { className: 'h' }, text, note && h('span', { className: 'sub' }, note));
+const seg = (label, opts, on, pick) => h('div', { className: 'seg', role: 'group', 'aria-label': label }, opts.map(([id, text]) => h('button', { type: 'button', 'aria-pressed': String(id === on), onclick: () => pick(id) }, text)));
+const dot = (color, size = 6, cls = '') => h('i', { className: 'dot ' + cls, style: `width:${size}px;height:${size}px;background:${color}` });
+const key = (color, text) => h('span', { className: 'key' }, h('i', { className: 'sw', style: `background:${color}` }), text);
+const legend = used => FAMILIES.filter((_, i) => i < 4 || used[i]).map(([, name, color]) => key(color, name));
+const step = (label, d, onclick, style) => h('button', { type: 'button', className: 'step', 'aria-label': label, onclick, style }, icon(d));
+const gbar = (frac, color = 'var(--plan)', cls = 'slot thin') => h('span', { className: cls }, h('i', { className: 'gbar', style: `width:${wide(frac, 1)};background:${color}` }));
+const facts = (list, cols, size) => h('div', { style: `display:grid;grid-template-columns:repeat(${cols},minmax(0,1fr));gap:${cols === 2 ? '14px 16px' : '10px 12px'}` }, list.map(([value, label]) => h('div', { className: 'col' }, h('span', { className: 'tn', style: `font-weight:500;${size ? `font-size:${size}px;letter-spacing:-.02em;line-height:1.2` : ''}` }, value), h('span', { className: 'sub el' }, label))));
+// A node that redraws itself; draw receives the redraw
+const live = (e, draw) => { e.redraw = () => e.replaceChildren(...[draw(e.redraw)].flat(Infinity).filter(Boolean)); e.redraw(); return e; };
+// Counts an element's number up to its value
+const countUp = (e, v, f) => {
+  const t0 = performance.now(), tick = now => { const t = Math.min(1, (now - t0) / 1100); e.textContent = f(v * (1 - (1 - t) ** 3)); if (t < 1) requestAnimationFrame(tick); };
+  still || !Number.isFinite(v) ? e.textContent = f(v) : tick(t0);
 };
-const tip = $('tip');
-function showTip(e, title, rows) {
-  tip.replaceChildren(h('b', {}, title), rows.map(([color, value, name]) => h('div', {}, h('i', { style: `background:${color}` }), h('strong', {}, value), ' ' + name)));
+const spark = s => {
+  const k = Math.ceil(s.length / 30), b = [];
+  for (let i = 0; i < s.length; i += k) b.push(sum(s.slice(i, i + k)) / Math.min(k, s.length - i));
+  const lo = Math.min(...b), span = Math.max(...b) - lo || 1;
+  return chart('76 32', '', `<path d="M${b.map((v, i) => `${(2 + i / Math.max(1, b.length - 1) * 72).toFixed(1)},${(29 - (v - lo) / span * 26).toFixed(1)}`).join('L')}" fill="none" stroke="var(--plan)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>`, { width: 76, height: 32, class: 'sp' });
+};
+// Strip of six totals: label, value, formatter, change, note, daily series, tab it opens
+const strip = (label, list, quiet) => h('section', { className: 'panel strip', 'aria-label': label }, list.map(([name, v, f, change, note, series, to]) => {
+  const big = h('span', { className: 'big' });
+  quiet ? big.textContent = f(v) : countUp(big, v, f);
+  return h(to ? 'button' : 'div', { className: 'kpi', type: to && 'button', onclick: to && (() => go(to)) }, h('span', { className: 'row' }, h('span', { className: 'sub' }, name), h('span', { className: 'sub tn' }, change)), h('span', { className: 'row', style: 'align-items:flex-end' }, big, series?.length > 1 && spark(series)), h('span', { className: 'sub tn el' }, note));
+}));
+// One row of a bar list: name, bar and value
+const barRow = ({ name, frac, value, color, cols = '150px minmax(0,1fr) 46px', mono, pick, dim, i = 0 }) =>
+  h('button', { type: 'button', className: 'wrow gup', style: `grid-template-columns:${cols};opacity:${dim ? .35 : 1};cursor:${pick ? 'pointer' : 'default'};animation-delay:${i * 45}ms`, onclick: pick },
+    h('span', { className: (mono ? 'mono ' : '') + 'el', style: pick ? '' : 'color:var(--muted)' }, name), gbar(frac, color, 'slot'), h('span', { className: 'tn r' }, value));
+// Grid table: a CSS column template, one letter per column (l left, r right, m mono), labels, then rows of cells
+const table = (cols, al, head, rows, empty) => [
+  h('div', { className: 'tr th', style: `grid-template-columns:${cols}` }, head.map((c, i) => h('span', { className: al[i] === 'r' ? 'r' : '' }, c))),
+  h('div', { className: 'fill scroll' }, rows.map(({ cells, pick, on, dim, tall = 38 }, j) => h(pick ? 'button' : 'div', { type: pick && 'button', className: 'tr gup', 'aria-pressed': on == null ? null : String(on), onclick: pick, style: `grid-template-columns:${cols};min-height:${tall}px;opacity:${dim ? .35 : 1};animation-delay:${Math.min(j, 14) * 30}ms` }, cells.map((c, i) => h('span', { className: al[i] === 'r' ? 'r' : al[i] === 'm' ? 'mono' : '' }, c)))),
+    !rows.length && h('span', { className: 'sub', style: 'display:block;padding:8px 24px' }, empty)),
+];
+const closeLayer = () => $('layer').replaceChildren();
+const dialog = (label, width, ...kids) => $('layer').replaceChildren(h('div', { className: 'modal', onkeydown: e => e.key === 'Escape' && closeLayer() },
+  h('button', { type: 'button', className: 'scrim', 'aria-label': 'Close', onclick: closeLayer }), h('div', { role: 'dialog', 'aria-modal': 'true', 'aria-label': label, className: 'dialog', style: `width:${width}px` }, kids)));
+const closer = () => h('button', { type: 'button', className: 'ctl', 'aria-label': 'Close', style: 'width:30px;padding:0', onclick: closeLayer }, icon(ICON.close, 13));
+function showTip(e, name, rows) {
+  const tip = $('tip');
+  tip.replaceChildren(h('b', {}, name), rows.map(([color, label, value]) => [h('i', { style: `background:${color}` }), h('span', {}, label), h('strong', {}, value)]));
   tip.hidden = false;
   const r = tip.getBoundingClientRect();
   tip.style.left = Math.max(8, Math.min(e.clientX + 14, innerWidth - r.width - 8)) + 'px';
   tip.style.top = Math.max(8, e.clientY - r.height - 12) + 'px';
 }
 
-// Chart: type col (stacked columns), bar (horizontal bars) or line (numeric x)
-function chart({ type = 'col', x, series, fy = fmt.num, fx = String, max, label = series[0].name }) {
-  const holder = h('div'), n = x.length, hz = type === 'bar', isLine = type === 'line';
-  const box = h('div', {}, series.length > 1 && h('div', { className: 'legend' }, series.map(s => h('span', {}, h('i', { style: `background:${s.color}` }), s.name))), holder);
-  const total = i => isLine ? Math.max(...series.map(s => s.values[i])) : sum(series, s => s.values[i]);
-  draws.push(() => {
-    if (!n) return holder.replaceChildren(h('p', { className: 'dim' }, NONE));
-    const W = box.clientWidth || 600, H = hz ? n * 28 + 26 : 220;
-    const m = hz ? { l: Math.min(220, W * .32), r: 70, t: 2, b: 24 } : { l: 54, r: 16, t: 10, b: 24 };
-    const pw = W - m.l - m.r, ph = H - m.t - m.b, bottom = m.t + ph;
-    const { top, ticks } = nice(max ?? x.reduce((t, _, i) => Math.max(t, total(i)), 0));
-    const v = q => q / top * (hz ? pw : ph), band = (hz ? ph : pw) / n, bw = Math.max(1, Math.min(24, band - 2));
-    const x0 = x[0], span = x[n - 1] - x0 || 1;
-    const pos = i => isLine ? m.l + (x[i] - x0) / span * pw : (hz ? m.t : m.l) + band * (i + .5);
-    const g = svg('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': label });
-    const text = (tx, ty, s, anchor = 'middle', cls = '') => g.append(svg('text', { x: tx, y: ty, 'text-anchor': anchor, class: cls }, s));
-    for (const t of ticks) {
-      const p = hz ? m.l + v(t) : bottom - v(t), cls = t ? 'grid' : 'base';
-      g.append(svg('line', hz ? { x1: p, x2: p, y1: m.t, y2: bottom, class: cls } : { x1: m.l, x2: W - m.r, y1: p, y2: p, class: cls }));
-      hz ? text(p, H - 7, fy(t)) : text(m.l - 8, p + 4, fy(t), 'end');
-    }
-    if (isLine) {
-      const k = Math.max(1, Math.min(6, Math.floor(pw / 120)));
-      for (let i = 0, prev; i <= k; i++) { const s = fx(x0 + span * i / k); if (s !== prev) text(m.l + pw * i / k, H - 7, prev = s, i ? i === k ? 'end' : 'middle' : 'start'); }
-      for (const s of series) {
-        const pts = s.values.map((q, i) => `${pos(i).toFixed(1)},${(bottom - v(q)).toFixed(1)}`);
-        g.append(svg('path', { d: 'M' + pts.join('L'), class: 'line', style: `stroke:${s.color}` }), svg('circle', { cx: pos(n - 1), cy: bottom - v(s.values[n - 1]), r: 4, class: 'dot', style: `fill:${s.color}` }));
-      }
-    } else x.forEach((label, i) => {
-      const last = series.findLast(s => s.values[i] > 0), c = pos(i) - bw / 2;
-      let acc = 0;
-      for (const s of series) {
-        const q = s.values[i];
-        if (!(q > 0)) continue;
-        const a = v(acc), full = v(q), l = full - (s !== last && full > 3 ? 2 : 0);
-        acc += q;
-        g.append(svg('path', { style: `fill:${s.color}`, d: hz ? barPath(m.l + a, c, bw, l, s === last, 1) : barPath(c, bottom - a - full + (full - l), bw, l, s === last, 0) }));
-      }
-      const every = Math.ceil(n / Math.max(1, Math.floor(pw / 60))), room = Math.floor((m.l - 14) / 6.6), name = fx(label);
-      if (hz) { text(m.l - 8, pos(i) + 4, name.length > room ? name.slice(0, room - 1) + '…' : name, 'end', 'cat'); text(m.l + v(acc) + 6, pos(i) + 4, fy(acc), 'start', 'val'); }
-      else if (i % every === 0) text(pos(i), H - 7, name);
-    });
-    const mark = g.appendChild(svg('g', { class: 'hover' })), hide = () => { tip.hidden = true; mark.replaceChildren(); };
-    g.addEventListener('pointerleave', hide);
-    g.addEventListener('pointermove', e => {
-      const r = g.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top, at = x0 + (px - m.l) / pw * span;
-      const i = isLine ? x.reduce((b, t, j) => Math.abs(t - at) < Math.abs(x[b] - at) ? j : b, 0) : Math.floor((hz ? py - m.t : px - m.l) / band);
-      if (i < 0 || i >= n) return hide();
-      mark.replaceChildren(...(isLine
-        ? [svg('line', { x1: pos(i), x2: pos(i), y1: m.t, y2: bottom, class: 'base' }), ...series.map(s => svg('circle', { cx: pos(i), cy: bottom - v(s.values[i]), r: 4, class: 'dot', style: `fill:${s.color}` }))]
-        : [svg('rect', hz ? { x: m.l, y: m.t + band * i, width: pw, height: band } : { x: m.l + band * i, y: m.t, width: band, height: ph })]));
-      showTip(e, fx(x[i]), [...series.map(s => [s.color, fy(s.values[i]), s.name]), ...(series.length > 1 && !isLine ? [['transparent', fy(total(i)), 'Total']] : [])]);
-    });
-    holder.replaceChildren(g);
-  });
-  return box;
-}
-
-// Shared column sets for rows produced by agg
-const usageCols = [['Requests', r => r.requests, fmt.int], ['Input', r => r.input, fmt.num], ['Output', r => r.output, fmt.num], ['Cache write', r => r.cacheWrite, fmt.num], ['Cache read', r => r.cacheRead, fmt.num], ['Tokens', r => r.tokens, fmt.num], ['Est. cost', r => r.cost, fmt.usd]];
-const planCols = [['5h %', r => r.p5, fmt.pct], ['7d %', r => r.p7, fmt.pct]];
-const open = r => location.hash = '#/session/' + encodeURIComponent(r.id);
-const one = (name, values, color = C[0]) => [{ name, color, values }];
-
-const views = {
-  ''({ cut, sessions, buckets }) {
-    const t = agg(buckets), byDay = groupBy(buckets, b => b.day), days = [];
-    const first = cut || buckets.reduce((a, b) => b.day < a ? b.day : a, dayOf(Date.now()));
-    for (let d = Date.parse(first); d <= Date.parse(dayOf(Date.now())); d += 864e5) days.push(new Date(d).toISOString().slice(0, 10));
-    const d = days.map(day => { const bs = byDay.get(day) || []; return { name: day, ...agg(bs), sessions: new Set(bs.map(b => b.s.id)).size }; });
-    const daily = (title, series, fy) => card(title, chart({ x: days, series, fy, fx: fmt.day, label: title }));
-    return [
-      meters(),
-      tiles([['Total tokens', fmt.num(t.tokens), fmt.int(t.requests) + ' requests'], ['Estimated cost', fmt.usd(t.cost), 'price-table estimate'], ['Sessions', fmt.int(sessions.length)], ['Cache hit rate', fmt.pct(t.cacheRead / (t.cacheRead + t.cacheWrite + t.input) * 100), 'cache read / all input']]),
-      daily('Tokens per day', [['Input', 'input'], ['Output', 'output'], ['Cache write', 'cacheWrite'], ['Cache read', 'cacheRead']].map(([name, k], i) => ({ name, color: C[i], values: d.map(r => r[k]) }))),
-      h('div', { className: 'grid2' }, daily('Estimated cost per day', one('Estimated cost', d.map(r => r.cost)), fmt.usd), daily('Sessions per day', one('Sessions', d.map(r => r.sessions)), fmt.int)),
-      card('By day', table([['Day', r => r.name], ['Sessions', r => r.sessions, fmt.int], ...usageCols], d, { sort: 0 })),
-    ];
-  },
-  plan({ sessions, buckets, cutMs }) {
-    const p = data.plan, since = data.loggingSince, t = agg(since == null ? [] : buckets.filter(b => b.day >= dayOf(since)));
-    const line = (title, rs) => card(title, chart({ type: 'line', x: rs.map(r => r.at), series: one(title, rs.map(r => r.percent)), fy: fmt.pct, fx: fmt.date, max: 100 }),
-      h('details', {}, h('summary', {}, `Readings (${rs.length})`), table([['Time', r => r.at, fmt.date], ['Percent', r => r.percent, fmt.pct], ['Resets', r => r.resetsAt, fmt.date]], rs, { sort: 0 })));
-    const by = (label, rows, extra = []) => card('Attributed percent per ' + label.toLowerCase(), table([[label, r => r.name], ...extra, ...planCols, ['Tokens', r => r.tokens, fmt.num]], rows, { sort: extra.length + 1, click: rows[0]?.id && open }));
-    return [
-      meters(),
-      tiles([['Tokens per 1% (5-hour)', fmt.num(t.tokens / t.p5)], ['Tokens per 1% (weekly)', fmt.num(t.tokens / t.p7)], ['Unattributed 5-hour', fmt.pct(p.unattributed.fiveHour), 'no local request explains it'], ['Unattributed weekly', fmt.pct(p.unattributed.sevenDay), 'no local request explains it'],
-        ['Fable weekly share', fmt.pct(sum(buckets.filter(b => /fable/i.test(b.model)), b => b.p7)), 'estimate from token share']]),
-      h('div', { className: 'grid2' }, line('5-hour limit', p.fiveHour.filter(r => r.at >= cutMs)), line('Weekly limit', p.sevenDay.filter(r => r.at >= cutMs))),
-      by('Session', sessions.map(({ s, t }) => ({ id: s.id, name: s.title || s.id, project: s.project, ...t })), [['Project', r => r.project]]),
-      h('div', { className: 'grid2' }, by('Project', rollup(buckets, b => b.s.project)), by('Model', rollup(buckets, b => b.model))),
-    ];
-  },
-  sessions({ sessions }) {
-    const rows = sessions.map(({ s, b, t }) => ({ id: s.id, s, t, title: s.title || s.id, sub: sum(b.filter(u => u.sub), u => u.cost) }));
-    const cols = [['Title', r => r.title], ['Project', r => r.s.project], ['Start', r => r.s.start, fmt.date], ['Duration', r => r.s.end - r.s.start, fmt.dur], ['Prompts', r => r.s.prompts, fmt.int], ['Subagents', r => r.s.agents.length, fmt.int],
-      ['Main cost', r => r.t.cost - r.sub, fmt.usd], ['Subagent cost', r => r.sub, fmt.usd], ['Tokens', r => r.t.tokens, fmt.num], ['5h %', r => r.t.p5, fmt.pct], ['7d %', r => r.t.p7, fmt.pct], ['Engine cost', r => r.s.log?.engineCost ?? null, fmt.usd]];
-    const holder = h('div'), show = () => holder.replaceChildren(table(cols, rows.filter(r => r.title.toLowerCase().includes(state.q)), { sort: 2, click: open }));
-    show();
-    return card(null, h('label', { className: 'field' }, 'Search titles', h('input', { type: 'search', value: state.q, oninput: e => { state.q = e.target.value.toLowerCase(); show(); } })), holder);
-  },
-  agents({ sessions, cutMs }) {
-    const rows = rollup(sessions.flatMap(x => x.s.agents.filter(a => a.start >= cutMs)), a => a.type);
-    return card('Subagent types', table([['Type', r => r.name], ['Runs', r => r.n, fmt.int], ['Tokens', r => r.tokens, fmt.num], ['Est. cost', r => r.cost, fmt.usd], ['Avg duration', r => sum(r.rs, a => a.end - a.start) / r.n, fmt.dur], ['Avg tool calls', r => sum(r.rs, a => a.toolCalls) / r.n, fmt.num]], rows, { sort: 3 }));
-  },
-  tools({ sessions }) {
-    const m = new Map();
-    for (const { s } of sessions) for (const [name, t] of Object.entries(s.tools || {})) {
-      const o = m.get(name) || m.set(name, { name, calls: 0, errors: 0, timed: 0, ms: 0, maxMs: 0 }).get(name);
-      for (const k of ['calls', 'errors', 'timed', 'ms']) o[k] += t[k] || 0;
-      o.maxMs = Math.max(o.maxMs, t.maxMs || 0);
-    }
-    return card('Tools', table([['Tool', r => r.name], ['Calls', r => r.calls, fmt.int], ['Errors', r => r.errors, fmt.int], ['Error rate', r => r.calls ? r.errors / r.calls * 100 : null, fmt.pct], ['Avg duration', r => r.timed ? r.ms / r.timed : null, fmt.dur], ['Slowest', r => r.timed ? r.maxMs : null, fmt.dur]], [...m.values()], { sort: 1 }));
-  },
-  models({ buckets }) {
-    return [['Model', b => b.model], ['Project', b => b.s.project]].map(([label, key]) => {
-      const rows = rollup(buckets, key).sort((a, b) => b.cost - a.cost), top = rows.slice(0, 10);
-      return card(`Estimated cost per ${label.toLowerCase()}`, chart({ type: 'bar', x: top.map(r => r.name), series: one('Estimated cost', top.map(r => r.cost)), fy: fmt.usd }), table([[label, r => r.name], ...usageCols], rows, { sort: 7 }));
-    });
-  },
-  cost({ sessions }) {
-    const rows = sessions.filter(x => x.s.log?.engineCost != null).map(({ s }) => { const est = sum(s.usage, b => b.cost), eng = s.log.engineCost; return { id: s.id, s, est, eng, diff: est - eng }; });
-    const est = sum(rows, r => r.est), eng = sum(rows, r => r.eng), rel = (d, e) => e ? d / e * 100 : null;
-    return [
-      tiles([['Sessions compared', fmt.int(rows.length), 'sessions with an engine ledger'], ['Price-table estimate', fmt.usd(est)], ['Engine ledger', fmt.usd(eng)], ['Difference', fmt.signed(est - eng), fmt.pct(rel(est - eng, eng)) + ' of engine cost']]),
-      card('Estimate against engine ledger', table([['Title', r => r.s.title || r.id], ['Project', r => r.s.project], ['Start', r => r.s.start, fmt.date], ['Estimate', r => r.est, fmt.usd], ['Engine', r => r.eng, fmt.usd], ['Difference', r => r.diff, fmt.signed], ['Difference %', r => rel(r.diff, r.eng), fmt.pct]], rows, { sort: 2, click: open })),
-      card('Price table (USD per 1M tokens)', table([['Model prefix', r => r[0]], ...[['Input', 'input'], ['Output', 'output'], ['Cache read', 'read'], ['Cache write 5m', 'write5m'], ['Cache write 1h', 'write1h']].map(([k, f]) => [k, r => r[1][f], fmt.usd])], Object.entries(data.prices || {}), { sort: 0, desc: false })),
-    ];
-  },
-};
-
-// Chat message renderers
-const fold = (label, text, cls) => h('details', { className: cls }, h('summary', {}, label), h('pre', {}, text ?? ''));
-const block = b => b.type === 'text' ? h('pre', {}, b.text ?? '') : b.type === 'thinking' ? fold('Thinking', b.text, 'dim') : b.type === 'image' ? h('p', { className: 'dim' }, '[image]')
-  : fold(`${b.type === 'tool_use' ? 'Tool' : 'Result'}${b.name ? ': ' + b.name : ''}${b.isError ? ' (error)' : ''}`, b.text, b.isError ? 'err' : '');
-const message = m => h('div', { className: 'msg ' + m.role }, h('div', { className: 'meta' }, [m.role, fmt.date(m.at), m.model, m.usage && `${fmt.num(tok(m.usage))} tokens`, m.usage && fmt.usd(m.usage.cost)].filter(Boolean).map((x, i) => h(i ? 'span' : 'b', {}, x))), m.blocks.map(block));
-
-// Session detail view
-async function detail(id) {
-  const { session: s, turns, events, workflows } = await get('/api/session/' + encodeURIComponent(id));
-  const t = agg(s.usage), log = s.log, ids = new Set(s.agents.map(a => a.id)), kids = groupBy(s.agents, a => ids.has(a.parent) ? a.parent : ''), tree = [];
-  const walk = (p, d) => (kids.get(p) || []).forEach(a => { tree.push({ ...a, d }); walk(a.id, d + 1); });
-  walk('', 0);
-  const chat = h('div'), chatTitle = h('h2', {}, 'Chat');
-  const load = async a => {
-    chatTitle.textContent = 'Chat: ' + (a ? `${a.type} ${a.description || ''}` : 'main thread');
-    chat.replaceChildren('Loading…');
-    try { chat.replaceChildren(...(await get(`/api/chat/${encodeURIComponent(id)}${a ? '?agent=' + encodeURIComponent(a.id) : ''}`)).messages.map(message)); }
-    catch (e) { chat.replaceChildren(h('p', { className: 'err' }, e.message)); }
-    chatTitle.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+// Axis step with round values, a quarter of the top
+const nice = max => { const mag = 10 ** Math.floor(Math.log10(max / 4)); return [1, 2, 2.5, 5, 10].map(v => v * mag).find(v => v * 4 >= max); };
+// Column outline with a rounded top
+const bar = (x, w, yb, yt, r) => `M${x.toFixed(1)},${yb.toFixed(1)}V${(yt + r).toFixed(1)}q0,${-r} ${r},${-r}h${(w - 2 * r).toFixed(1)}q${r},0 ${r},${r}V${yb.toFixed(1)}Z`;
+const rect = (x, y, w, t, r) => `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${t.toFixed(1)}" rx="${r}"/>`;
+// Stacked columns, one per day; box is the plot's left, right, top and base, then the view's width and height
+function columns(label, [x0, x1, yt, yb, vw, vh], days, stacks, fy, { ticks = 4, tip, cap = 22 } = {}) {
+  const n = days.length, totals = days.map((_, i) => sum(stacks, s => s.values[i])), top = nice(Math.max(1e-9, ...totals)) * 4;
+  const band = (x1 - x0) / n, bw = Math.max(1.5, Math.min(cap, band * .62)), gap = bw >= 4 ? 2 : 0, y = v => yb - v / top * (yb - yt);
+  const paths = stacks.map((s, k) => `<path fill="${s.color}" d="${days.map((_, i) => {
+    const below = sum(stacks.slice(0, k), o => o.values[i]), isTop = !stacks.slice(k + 1).some(o => o.values[i] > 0), a = y(below), b = y(below + s.values[i]) + (isTop ? 0 : gap);
+    return a - b < .5 ? '' : bar(x0 + i * band + (band - bw) / 2, bw, a, b, isTop ? Math.min(3, bw / 2, a - b) : 0);
+  }).join('')}"/>`).join('');
+  const grid = Array.from({ length: ticks }, (_, k) => { const v = top * (k + 1) / ticks, p = y(v); return `<line x1="${x0}" x2="${x1}" y1="${p}" y2="${p}" class="g"/><text x="${x0 - 8}" y="${p + 4}" text-anchor="end">${fy(v)}</text>`; }).join('');
+  const marks = [...new Set((tip ? [0, 1, 2, 3, 4, 5] : [0, 5]).map(k => Math.round(k * (n - 1) / 5)))].map(i => `<text x="${i ? i === n - 1 ? x1 : x0 + (i + .5) * band : x0}" y="${yb + 20}" text-anchor="${i ? i === n - 1 ? 'end' : 'middle' : 'start'}">${fmt.day(days[i])}</text>`).join('');
+  const g = chart(`${vw} ${vh}`, label, `${grid}<text x="${x0 - 8}" y="${yb + 4}" text-anchor="end">0</text><rect class="band" y="${yt}" height="${yb - yt}" rx="3" fill="var(--wash)" opacity="0"/><g class="gy" style="transform-origin:0 ${yb}px">${paths}</g><line x1="${x0}" x2="${x1}" y1="${yb}" y2="${yb}" class="ax"/>${marks}`);
+  if (!tip) return g;
+  const mark = g.querySelector('.band'), hide = () => { mark.setAttribute('opacity', 0); $('tip').hidden = true; };
+  g.onmouseleave = hide;
+  g.onmousemove = e => {
+    const i = Math.floor((new DOMPoint(e.clientX, e.clientY).matrixTransform(g.getScreenCTM().inverse()).x - x0) / band);
+    if (i < 0 || i >= n) return hide();
+    for (const [k, v] of [['x', x0 + i * band], ['width', band], ['opacity', 1]]) mark.setAttribute(k, v);
+    showTip(e, fmt.long(days[i]), [...stacks.filter(s => s.values[i] > 0).map(s => [s.color, s.name, fy(s.values[i])]), ['transparent', 'Total', fy(totals[i])]]);
   };
-  const delta = k => r => r.log?.[k] ? r.log[k][1] - r.log[k][0] : null;
-  return [
-    h('div', {}, h('a', { href: '#/sessions' }, 'Back to sessions'), h('h1', { className: 'title' }, s.title || s.id),
-      h('dl', { className: 'facts' }, [['Project', s.project], ['Folder', s.cwd], ['Version', s.version], ['Entry point', s.entrypoint], ['Session ID', s.id]].filter(f => f[1]).map(([k, v]) => h('div', {}, h('dt', {}, k), h('dd', {}, v))))),
-    tiles([['Started', fmt.date(s.start)], ['Duration', fmt.dur(s.end - s.start)], ['Prompts', fmt.int(s.prompts), s.compactions + ' compactions'], ['Tokens', fmt.num(t.tokens), fmt.int(t.requests) + ' requests'], ['Estimated cost', fmt.usd(t.cost), log?.engineCost != null && 'engine ledger ' + fmt.usd(log.engineCost)],
-      ['Plan burned', fmt.pct(t.p5) + ' 5h', fmt.pct(t.p7) + ' weekly'], ...(log ? [['Context fill', fmt.pct(log.context?.percent), log.context && `${fmt.num(log.context.tokens)} of ${fmt.num(log.context.window)}`], ['Turn outcomes', fmt.int(log.outcomes.answer) + ' answered', `${log.outcomes.aborted} aborted, ${log.outcomes.refusal} refused, ${log.outcomes.error} errors`], ['End reason', log.endReason || '–']] : [])]),
-    card(`Subagents (${tree.length})`, table([['Type', r => r.type, (v, r) => h('span', { style: `padding-left:${r.d * 18}px` }, (r.d ? '└ ' : '') + v)], ['Description', r => r.description], ['Model', r => r.model], ['Tokens', r => r.input == null ? null : tok(r), fmt.num], ['Est. cost', r => r.cost, fmt.usd], ['Duration', r => r.end - r.start, fmt.dur], ['Tool calls', r => r.toolCalls, fmt.int], ['Background', r => r.background ? 'yes' : ''], ['Workflow', r => r.workflow]], tree, { fixed: true, click: load, limit: Infinity, empty: 'No subagent ran in this session.' })),
-    card(`Turns (${turns.length})`, table([['Time', r => r.at, fmt.date], ['Prompt', r => (r.prompt || '').replace(/\s+/g, ' ').slice(0, 300)], ['Duration', r => r.log?.durationMs ?? r.end - r.at, fmt.dur], ['Requests', r => r.requests, fmt.int], ['Tokens', r => tok(r), fmt.num], ['Est. cost', r => r.cost, fmt.usd], ['Tool calls', r => r.toolCalls, fmt.int],
-      ['Outcome', r => r.log?.reason ?? null, v => h('span', { className: v === 'error' ? 'err' : '' }, v)], ['5h +%', delta('p5'), fmt.pct], ['7d +%', delta('p7'), fmt.pct], ['Context %', r => r.log?.contextPercent ?? null, fmt.pct], ['Context tokens', r => r.log?.contextTokens ?? null, fmt.num]], turns, { sort: 0, desc: false })),
-    h('div', { className: 'grid2' },
-      card('Events', table([['Time', r => r.at, fmt.date], ['Kind', r => r.kind], ['Detail', r => r.detail]], events, { sort: 0, desc: false, empty: 'No event recorded. Events start when the usage-log mod loads.' })),
-      card('Workflows', table([['Name', r => r.name], ['Status', r => r.status], ['Duration', r => r.durationMs, fmt.dur], ['Agents', r => r.agents, fmt.int], ['Tokens', r => r.tokens, fmt.num], ['Tool calls', r => r.toolCalls, fmt.int]], workflows, { empty: 'No workflow ran in this session.' }))),
-    card(null, chatTitle, h('button', { onclick: () => load() }, 'Load main thread'), chat),
-  ];
+  return g;
 }
 
-// Router
-async function render() {
+// Header: tabs, stamp, date range, project menu and refresh
+function header() {
+  const isCx = state.view === 'context', busy = document.body.classList.contains('busy'), sessions = data?.sessions || [];
+  const projects = rollup(sessions.flatMap(s => s.usage.map(b => ({ ...b, project: s.project }))), b => b.project).sort((a, b) => b.tokens - a.tokens);
+  const pick = p => { state.project = p; render(); };
+  $('head').replaceChildren(
+    h('div', { className: 'brand' }, chart('20 20', '', '<rect width="20" height="20" rx="6" fill="var(--ink)"/><path d="M5.5 14V9.5M10 14V5.5M14.5 14V8" stroke="var(--page)" stroke-width="2" stroke-linecap="round"/>', { width: 20, height: 20 }), 'Usage'),
+    h('nav', { 'aria-label': 'Views' }, TABS.map(([id, label]) => h('button', { type: 'button', className: 'tab', 'aria-pressed': String(id === state.view), onclick: () => go(id) }, label))),
+    h('div', { className: 'tools' },
+      h('span', { className: 'sub tn', style: 'margin-right:4px' }, busy ? 'Reading the log' : !data ? '' : isCx ? cx?.d.items.length ? `Items from ${cx.d.sessions} loaded sessions` : 'No session loaded yet' : 'Read ' + fmt.clock(data.generatedAt)),
+      !isCx && seg('Date range', [[7, '7d'], [30, '30d'], [90, '90d'], [0, 'All']], state.range, v => { state.range = v; render(); }),
+      !isCx && h('div', { style: 'position:relative' },
+        h('button', { type: 'button', className: 'ctl', 'aria-haspopup': 'listbox', 'aria-expanded': String(state.menu), style: 'justify-content:space-between;min-width:140px', onclick: () => { state.menu = !state.menu; header(); } }, state.project || 'All projects', icon(ICON.down, 12, 'chev' + (state.menu ? ' open' : ''))),
+        state.menu && [h('button', { type: 'button', className: 'veil', 'aria-label': 'Close menu', onclick: () => { state.menu = false; header(); } }),
+          h('div', { role: 'listbox', 'aria-label': 'Project', className: 'menu' }, [{ name: '', tokens: sum(projects, p => p.tokens) }, ...projects].map(p => h('button', { type: 'button', role: 'option', className: 'opt', 'aria-selected': String(p.name === state.project), onclick: () => pick(p.name) }, icon(ICON.check, 14), h('span', { className: 'el' }, p.name || 'All projects'), h('span', { className: 'sub tn' }, fmt.num(p.tokens)))))]),
+      h('button', { type: 'button', className: 'ctl', 'aria-label': 'Refresh', style: 'width:30px;padding:0', onclick: load }, icon(ICON.refresh, 14, 'spin'))));
+}
+
+// One plan window: the readings since it opened, and the pace projected to its reset
+function windowPanel(name, rs, span, axis, stamp, per, unit, perPct, n, delay) {
+  const last = rs.at(-1), now = Date.now(), style = `grid-column:span 4;animation-delay:${delay}s`;
+  if (!last?.resetsAt) return panel(style, 'pad', title(name), h('p', { className: 'sub' }, last ? `${fmt.pct(last.percent)} used at the last reading. The reading names no reset time.` : 'No reading yet. Readings start when the usage-log mod loads.'));
+  const end = last.resetsAt, start = end - span, stale = end <= now, p = last.percent, e = Math.max(1, Math.min(now, end) - start), x = t => 26 + Math.max(0, Math.min(1, (t - start) / span)) * 386, y = v => 126 - Math.min(v, 100) / 100 * 110;
+  const pts = [[start, 0], ...rs.filter(r => r.resetsAt === end && r.at >= start).map(r => [r.at, r.percent]), ...(stale ? [] : [[now, p]])], line = 'M' + pts.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join('L');
+  const xn = x(pts.at(-1)[0]), yn = y(p), proj = p * span / e, over = p >= 100, lands = !over && proj >= 100, tHit = start + (lands ? e * 100 / p : span), xe = x(tHit), ye = y(proj), far = lands && xe <= 330;
+  const status = stale ? `That window reset ${fmt.date(end)}. No reading since.` : over ? `Limit reached. Resets in ${fmt.dur(end - now)}.` : lands ? `At this pace the limit lands ${stamp(tHit)}, ${fmt.dur(end - tHit)} before reset.` : `On pace for ${Math.round(proj)}% at reset.`;
+  const pace = stale || over ? '' : `<g class="late"><path d="M${xn},${yn}L${xe},${ye}" fill="none" stroke="var(--muted)" stroke-width="2" stroke-dasharray="1 6" stroke-linecap="round"/><circle cx="${xe}" cy="${ye}" r="3.5" fill="${lands ? 'var(--crit)' : 'var(--muted)'}" stroke="var(--surface)" stroke-width="2"/><text x="${far ? xe + 8 : 412}" y="${lands ? 32 : Math.max(ye - 9, 26)}" text-anchor="${far ? 'start' : 'end'}">${lands ? stamp(tHit) : Math.round(proj) + '%'}</text><text x="${xn - 8}" y="${Math.max(yn - 9, 26)}" text-anchor="end" class="v">${p}%</text></g>`;
+  return panel(style, 'pad',
+    h('div', { className: 'row', style: 'align-items:baseline' }, title(name, state.project && ' · all projects'), h('span', { className: 'sub tn' }, stale ? `Reset ${fmt.date(end)}` : `Resets ${stamp(end)} · in ${fmt.dur(end - now)}`)),
+    h('div', { style: 'display:flex;align-items:flex-end;gap:14px;margin-top:8px;min-height:44px' }, h('span', { className: 'huge' }, String(Math.round(p)), h('small', {}, '%')), h('span', { style: 'display:flex;align-items:flex-start;gap:8px;padding-bottom:3px;color:var(--ink2);line-height:1.3' }, dot(stale ? 'var(--muted)' : over ? 'var(--crit)' : lands ? 'var(--warn)' : 'var(--good)', 8), status)),
+    h('div', { className: 'fill', style: 'margin-top:4px' }, chart('420 150', `${name} used, with projection to reset`, `<defs><linearGradient id="fade${n}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--plan)" stop-opacity=".2"/><stop offset="1" stop-color="var(--plan)" stop-opacity="0"/></linearGradient></defs>
+      <line x1="26" x2="412" y1="71" y2="71" class="g"/><line x1="26" x2="412" y1="16" y2="16" class="ax"/><line x1="26" x2="412" y1="126" y2="126" class="ax"/><text x="20" y="20" text-anchor="end">100</text><text x="20" y="75" text-anchor="end">50</text><text x="20" y="130" text-anchor="end">0</text>
+      ${Array.from({ length: n + 1 }, (_, i) => `<text x="${26 + i / n * 386}" y="144" text-anchor="${i ? i === n ? 'end' : 'middle' : 'start'}">${axis(start + i / n * span)}</text>`).join('')}
+      <g class="reveal"><path d="${line}L${xn},126L26,126Z" fill="url(#fade${n})"/><path d="${line}" class="glow" fill="none" stroke="var(--plan)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></g>${pace}
+      <circle cx="${xn}" cy="${yn}" r="4" fill="var(--plan)" class="ping"/><circle cx="${xn}" cy="${yn}" r="4" fill="var(--plan)" stroke="var(--surface)" stroke-width="2" class="pop"/>`)),
+    h('div', { className: 'sub', style: 'display:flex;gap:20px;white-space:nowrap' }, [[(p / e * per).toFixed(1) + unit, 'burn rate'], [Math.max(0, 100 - p).toFixed(0) + '%', 'left'], [fmt.num(perPct), 'tokens per 1%']].map(([v, label]) => h('span', {}, h('span', { className: 'tn', style: 'color:var(--ink)' }, v), ' ' + label))));
+}
+
+function overview(sc) {
+  const { t, D, days, prior, act, sessions } = sc, n = days.length, lines = act.added + act.removed, was = prior?.t, plan = data.plan, week = plan.sevenDay.at(-1);
+  const logged = agg(data.loggingSince == null ? [] : data.sessions.flatMap(s => s.usage.filter(b => b.day >= dayOf(data.loggingSince))));
+  const everything = data.sessions.flatMap(s => s.usage.map(b => ({ ...b, s }))), mine = everything.filter(b => !state.project || b.s.project === state.project);
+  const tools = toolRows(sessions).sort((a, b) => b.calls - a.calls), typeMax = Math.max(...TYPES.map(([, k]) => t[k])), costMax = Math.max(...TYPES.map(([, , k]) => t[k]));
+  const cells = Array(168).fill(0);
+  for (const { s } of sessions) for (const [k, v] of Object.entries(s.hours)) { const [d, hour] = k.split('|'); if (d >= sc.cut) cells[(new Date(d + 'T00:00').getDay() + 6) % 7 * 24 + +hour] += v; }
+  const peak = Math.max(...cells), busiest = cells.indexOf(peak), level = v => { const u = div(v, peak); return u < .06 ? 0 : u < .25 ? 1 : u < .5 ? 2 : u < .75 ? 3 : 4; }, SHADES = [.07, .22, .42, .68, 1];
+  const scale = Math.min(div(130, Math.max(...D.map(o => o.added))), div(58, Math.max(...D.map(o => o.removed)))), lb = 360 / n, lw = Math.max(1.5, Math.min(12, lb * .62));
+  const diff = (k, down) => D.map((o, i) => { const t = o[k] * scale; return t < 1 ? '' : rect(i * lb + (lb - lw) / 2, down ? 141 : 139 - t, lw, t, Math.min(1.5, lw / 2, t / 2)); }).join('');
+  const recent = [...data.sessions].sort((a, b) => b.live - a.live || b.end - a.end).find(s => s.log?.context?.percent != null);
+  const caps = [...plan.other.map(o => [o.kind.replaceAll('_', ' '), o.percent, o.resetsAt ? 'Resets ' + fmt.date(o.resetsAt) : 'Read ' + fmt.date(o.at)]),
+    ...(recent ? [['Context · ' + recent.title, recent.log.context.percent, `${fmt.num(recent.log.context.tokens)} of ${fmt.num(recent.log.context.window)} tokens`]] : []),
+    ['Unattributed · 5-hour', plan.unattributed.fiveHour, 'no local request explains it'], ['Unattributed · weekly', plan.unattributed.sevenDay, 'no local request explains it']];
+  return h('div', { className: 'grid12', style: 'grid-template-rows:108px 304px 340px 300px' },
+    strip('Totals', [
+      ['Tokens', t.tokens, fmt.num, delta(t.tokens, was?.tokens), `${fmt.num(t.tokens / n)} a day`, D.map(o => o.t.tokens), 'breakdown'],
+      ['Estimated cost', t.cost, fmt.usd0, delta(t.cost, was?.cost), `${fmt.usd(t.cost / n)} a day`, D.map(o => o.t.cost), 'breakdown'],
+      ['Sessions', sessions.length, fmt.int, delta(sessions.length, prior?.sessions), `${fmt.num(div(t.tokens, sessions.length))} tokens each`, D.map(o => o.sessions), 'sessions'],
+      ['Tool calls', act.calls, fmt.int, delta(act.calls, prior?.calls), `${fmt.pct(div(act.fails, act.calls) * 100)} failed`, D.map(o => o.calls), 'tools'],
+      ['Cache hit rate', hit(t), fmt.pct, delta(hit(t), was && hit(was), true), `saved ${fmt.usd0(t.saved)}`, D.map(o => hit(o.t)), 'breakdown'],
+      ['Lines changed', lines, fmt.num, delta(lines, prior && prior.added + prior.removed), `${fmt.num(div(t.tokens, lines) * 100)} tokens per 100 lines`, D.map(o => o.added + o.removed), 'sessions'],
+    ]),
+    windowPanel('5-hour window', plan.fiveHour, 5 * 36e5, fmt.clock, fmt.clock, 36e5, '% / h', div(logged.tokens, logged.p5), 5, .07),
+    windowPanel('Weekly window', plan.sevenDay, 7 * DAY, t => DOW[new Date(t).getDay()], t => `${DOW[new Date(t).getDay()]} ${fmt.clock(t)}`, DAY, '% / day', div(logged.tokens, logged.p7), 7, .14),
+    live(panel('grid-column:span 4;animation-delay:.21s', 'pad'), redraw => {
+      const by = state.by, top = [...groupBy(mine.filter(b => b.wk > 0), b => b.s.id).values()].map(bs => ({ s: bs[0].s, wk: sum(bs, b => b.wk) })).sort((a, b) => b.wk - a.wk);
+      const rows = by === 'project' ? rollup(everything, b => b.s.project).filter(r => r.wk > 0).sort((a, b) => b.wk - a.wk).map(r => ({ name: r.name, v: r.wk, dim: state.project && r.name !== state.project, pick: () => { state.project = r.name === state.project ? '' : r.name; render(); } }))
+        : by === 'model' ? FAMILIES.map(([, name, color], i) => ({ name, color, v: sum(mine.filter(b => fam(b.model) === i), b => b.wk), pick: () => go('breakdown') })).filter(r => r.v > 0)
+        : [...top.slice(0, 4).map(x => ({ name: x.s.title, v: x.wk, pick: () => go('sessions', x.s.id) })), ...(top.length > 4 ? [{ name: `${top.length - 4} more sessions`, v: sum(top.slice(4), x => x.wk), pick: () => go('sessions') }] : [])];
+      const loose = !state.project && week?.resetsAt > Date.now() ? Math.max(0, week.percent - sum(everything, b => b.wk)) : 0, all = [...rows, ...(loose > .05 ? [{ name: 'Unattributed', v: loose, color: 'var(--axis)' }] : [])], max = Math.max(.01, ...all.map(r => r.v));
+      return [h('div', { className: 'row' }, title('Where the week went'), seg('Group by', [['project', 'Project'], ['model', 'Model'], ['session', 'Session']], by, v => { state.by = v; redraw(); })),
+        h('div', { className: 'col', style: 'margin-top:10px' }, all.map((r, i) => barRow({ ...r, frac: r.v / max, value: fmt.pct(r.v), i })), !rows.length && h('span', { className: 'sub', style: 'padding:8px 0' }, 'Nothing attributed in this weekly window.')),
+        h('div', { className: 'sub', style: 'margin-top:auto' }, `Share of the weekly limit. Select a ${by} to ${by === 'project' ? 'filter by it' : by === 'model' ? 'open the breakdown' : 'open its chat'}.`)];
+    }),
+    live(panel('grid-column:span 5;padding:18px 20px 10px;animation-delay:.28s', ''), redraw => {
+      const m = state.metric, f = { tokens: o => o.tokens, cost: o => o.cost, pct: o => o.p7 }[m];
+      return [h('div', { className: 'row' }, title('Each day by model'), seg('Measure', [['tokens', 'Tokens'], ['cost', 'Cost'], ['pct', 'Weekly %']], m, v => { state.metric = v; redraw(); })),
+        h('div', { className: 'sub legend', style: 'margin-top:10px' }, legend(FAMILIES.map((_, i) => D.some(o => o.fam[i].requests))), !sc.buckets.length && h('span', { style: 'margin-left:auto' }, 'Nothing in this range.')),
+        h('div', { className: 'fill', style: 'margin-top:4px' }, columns('Stacked columns, one per day, split by model', [36, 536, 10, 262, 540, 290], days, FAMILIES.map(([, name, color], i) => ({ name, color, values: D.map(o => f(o.fam[i])) })), { tokens: fmt.num, cost: fmt.usd, pct: fmt.pct }[m], { tip: true }))];
+    }),
+    panel('grid-column:span 4;animation-delay:.35s', 'pad',
+      h('div', { className: 'row' }, title('When you work'), h('span', { className: 'sub key', style: 'gap:4px' }, 'Less', SHADES.map(o => h('i', { className: 'sw', style: `background:var(--plan);opacity:${o}` })), 'More')),
+      h('div', { className: 'fill', style: 'margin-top:12px' }, chart('410 190', 'Usage by weekday and hour', [1, 2, 3, 4, 5, 6, 0].map((d, i) => `<text x="0" y="${16.5 + i * 24}">${DOW[d]}</text>`).join('')
+        + SHADES.map((o, k) => `<g class="gf" style="animation-delay:${k * .11}s"><g fill="var(--plan)" opacity="${o}">${cells.map((v, i) => level(v) === k ? rect(32 + i % 24 * 15.75, 2 + Math.floor(i / 24) * 24, 13.75, 21, 3) : '').join('')}</g></g>`).join('')
+        + [0, 6, 12, 18].map(hr => `<text x="${32 + hr * 15.75}" y="186">${String(hr).padStart(2, '0')}:00</text>`).join(''))),
+      h('div', { className: 'sub tn el' }, peak ? `Busiest ${DOW[(Math.floor(busiest / 24) + 1) % 7]} ${String(busiest % 24).padStart(2, '0')}:00 · ${Math.round(div(sum(cells.filter((_, i) => i < 120 && i % 24 >= 9 && i % 24 < 19)), sum(cells)) * 100)}% on weekdays 09:00 to 19:00` : 'Nothing in this range.')),
+    panel('grid-column:span 3;animation-delay:.42s', 'pad',
+      h('div', { className: 'row', style: 'align-items:baseline' }, title('Tool calls'), h('span', { className: 'sub tn' }, `${fmt.pct(div(act.fails, act.calls) * 100)} failed`)),
+      h('div', { className: 'col', style: 'margin-top:10px' }, tools.slice(0, 7).map((o, i) => barRow({ name: o.name, mono: true, frac: div(o.calls, tools[0].calls), value: fmt.int(o.calls), cols: '92px minmax(0,1fr) 44px', i, pick: () => { state.tool = o.name; state.extra = 'fails'; go('tools'); } }))),
+      h('button', { type: 'button', className: 'ctl wide', onclick: () => go('tools') }, 'Open tools')),
+    panel('grid-column:span 4;animation-delay:.49s', 'pad',
+      h('div', { className: 'row', style: 'align-items:baseline' }, title('Tokens'), h('span', { className: 'sub tn' }, `${fmt.num(div(t.tokens, sessions.length))} a session`)),
+      h('span', { className: 'big', style: 'font-size:32px;margin-top:6px' }, fmt.num(t.tokens)),
+      [['Type', 'Tokens', 'Estimated cost'], ...TYPES].map(([name, a, b], i) => h('div', { className: i ? 'gup' : 'sub', style: `display:grid;grid-template-columns:82px minmax(0,1fr) minmax(0,1fr);align-items:center;gap:16px;flex:none;${i ? `height:32px;animation-delay:${i * 50}ms` : 'margin-top:12px;padding-bottom:4px'}` }, h('span', {}, name),
+        i ? [[t[a], typeMax, fmt.num], [t[b], costMax, fmt.usd0]].map(([v, max, f]) => h('span', { style: 'display:grid;grid-template-columns:minmax(0,1fr) 48px;align-items:center;gap:8px' }, gbar(div(v, max)), h('span', { className: 'tn r' }, f(v)))) : [h('span', {}, a), h('span', {}, b)])),
+      h('div', { className: 'sub tn', style: 'margin-top:auto' }, `Cache saved an estimated ${fmt.usd0(t.saved)}`)),
+    panel('grid-column:span 5;animation-delay:.56s', 'pad',
+      h('div', { className: 'row' }, title('Code output'), h('div', { className: 'sub legend' }, key('var(--plan)', 'Lines added'), key('var(--muted)', 'Lines removed'))),
+      h('div', { className: 'fill', style: 'display:grid;grid-template-columns:150px minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:20px;margin-top:8px' },
+        h('div', { style: 'display:grid;grid-template-rows:repeat(4,minmax(0,1fr))' }, [['+' + fmt.num(act.added), 'lines added'], ['−' + fmt.num(act.removed), 'lines removed'], [fmt.int(act.files), 'files edited'], [fmt.int(act.commits), `commits, ${fmt.int(act.prs)} pull requests`]].map(([v, label]) => h('div', { className: 'col', style: 'justify-content:center' }, h('span', { className: 'tn', style: 'font-size:18px;font-weight:500;line-height:1.2' }, v), h('span', { className: 'sub el' }, label)))),
+        chart('360 220', 'Lines added and removed each day', `<g class="gy" style="transform-origin:0 140px"><g fill="var(--plan)">${diff('added')}</g><g fill="var(--muted)">${diff('removed', true)}</g></g><text x="0" y="216">${fmt.day(days[0])}</text><text x="360" y="216" text-anchor="end">${fmt.day(days[n - 1])}</text>`))),
+    panel('grid-column:span 3;animation-delay:.63s', 'pad', title('More limits'),
+      h('div', { className: 'fill scroll col', style: 'gap:14px;margin-top:12px' }, caps.map(([label, pct, note]) => h('div', { className: 'col', style: 'gap:5px' }, h('div', { className: 'row', style: 'gap:8px' }, h('span', { className: 'el' }, label), h('span', { className: 'tn' }, fmt.pct(pct))),
+        h('span', { className: 'track' }, h('i', { className: 'gbar', style: `width:${wide(pct, 100)};background:${pct >= 95 ? 'var(--crit)' : pct >= 80 ? 'var(--warn)' : 'var(--plan)'}` })), h('span', { className: 'sub tn el' }, note))))));
+}
+
+const tone = o => o === 'error' ? 'var(--crit)' : o === 'answer' ? 'var(--good)' : 'var(--warn)';
+// A prompt as the person typed it: a slash command without its tags
+const said = p => { const c = /<command-name>\/?([^<]+)<\/command-name>/.exec(p), a = /<command-args>([^<]*)<\/command-args>/.exec(p); return c ? `/${c[1]} ${a?.[1] ?? ''}`.trim() : p; };
+
+// Sessions: the list, the open session's chat and its details
+function sessionsView(sc) {
+  const panes = [h('section', { className: 'panel', 'aria-label': 'Chat', style: 'animation-delay:.07s' }), h('aside', { className: 'panel pad scroll', 'aria-label': 'Session details', style: 'gap:20px;animation-delay:.14s' })];
+  const clear = () => { Object.assign(state, { q: '', project: '', range: 0 }); render(); };
+  const none = panel('grid-column:span 2;align-items:center;justify-content:center;gap:12px', '', h('span', { style: 'font-size:15px;font-weight:500' }, 'No session in view'), h('span', { className: 'sub' }, 'Widen the date range, pick another project or clear the search.'), h('button', { type: 'button', className: 'ctl', onclick: clear }, 'Clear search and filters'));
+  let shown;
+  const list = live(h('div', { className: 'col fill' }), redraw => {
+    const q = state.q.trim().toLowerCase(), f = { recent: x => x.s.start, tok: x => x.t.tokens, wk: x => x.t.p7 }[state.sort];
+    const rows = sc.sessions.filter(x => !q || x.s.title.toLowerCase().includes(q)).sort((a, b) => f(b) - f(a)), open = rows.find(x => x.s.id === state.sel) || rows[0];
+    none.hidden = !!open;
+    panes[0].hidden = panes[1].hidden = !open;
+    if (open && shown !== open.s.id) openSession(open, panes);
+    shown = open?.s.id;
+    return [h('div', { className: 'row', style: 'padding:0 14px 10px' }, seg('Sort by', [['recent', 'Recent'], ['tok', 'Tokens'], ['wk', 'Weekly %']], state.sort, v => { state.sort = v; redraw(); }), h('span', { className: 'sub tn' }, q ? `${rows.length} found` : `${rows.length} of ${data.sessions.length}`)),
+      h('div', { className: 'fill items' }, rows.map(x => h('button', { type: 'button', className: 'item', 'aria-pressed': String(x === open), onclick: () => { state.sel = x.s.id; history.replaceState(null, '', '#/sessions/' + encodeURIComponent(x.s.id)); redraw(); } },
+        h('b', { className: 'el' }, x.s.title), h('span', { className: 'tn r' }, fmt.num(x.t.tokens)), h('span', { className: 'sub el' }, x.s.live && [dot('var(--good)', 7, 'live'), ' Active · '], `${x.s.project} · ${fmt.date(x.s.start)}`), h('span', { className: 'sub tn r' }, fmt.pct(x.t.p7) + ' wk'))),
+        !rows.length && h('div', { className: 'col', style: 'align-items:flex-start;gap:10px;padding:12px' }, h('span', { className: 'sub' }, 'No session matches.'), h('button', { type: 'button', className: 'ctl', onclick: clear }, 'Clear search and filters')))];
+  });
+  return h('div', { className: 'panes', style: 'grid-template-columns:300px minmax(0,1fr) 348px' },
+    h('aside', { className: 'panel', 'aria-label': 'Session list' }, h('div', { style: 'padding:14px 14px 10px' }, h('label', { className: 'search' }, icon(ICON.search, 14), h('input', { type: 'text', value: state.q, placeholder: 'Search sessions', 'aria-label': 'Search sessions', oninput: e => { state.q = e.target.value; list.redraw(); } }))), list),
+    panes, none);
+}
+// Reads a session's turns and chat, then draws them into the two panes
+async function openSession(x, panes) {
+  if (cur?.id !== x.s.id) {
+    const mine = cur = { id: x.s.id, x, panes, th: 0, turn: -1, chats: {} }, id = encodeURIComponent(x.s.id);
+    panes[1].replaceChildren();
+    panes[0].replaceChildren(h('p', { className: 'sub note', role: 'status' }, 'Reading the session.'));
+    try { [mine.detail, { turns: mine.chats[0] }] = await Promise.all([get('/api/session/' + id), get('/api/chat/' + id)]); }
+    catch (e) { if (cur === mine) { cur = null; mine.panes[0].replaceChildren(h('p', { className: 'note', role: 'alert' }, e.message)); } return; }
+    if (cur !== mine) return;
+  }
+  Object.assign(cur, { x, panes });
+  if (cur.detail) drawSession(true);
+}
+function drawSession(anim) {
+  const { x: { s }, detail, chats, th, panes: [chatPane, sidePane] } = cur, T = detail.turns, N = T.length, agents = [...s.agents].sort((a, b) => a.start - b.start), threads = agents.slice(0, 3), ag = threads[th - 1], turns = chats[th], n = turns.length;
+  const at = new Map(T.map((d, i) => [d.at, i])), ti = Math.max(0, Math.min(cur.turn < 0 ? N - 1 : cur.turn, N - 1)), found = turns.findIndex(m => at.get(m.at) === ti), pg = Math.ceil((n - (found < 0 ? n - 1 : found)) / 5), from = ag ? 0 : Math.max(0, n - 5 * pg), to = ag ? n : n - 5 * (pg - 1);
+  const marks = detail.compactions.map(c => ({ ...c, i: T.findIndex(d => d.at >= c.at) })).filter(c => c.i >= 0), family = model => FAMILIES[fam(model)];
+  const turnTo = i => { cur.turn = Math.max(0, Math.min(N - 1, i)); cur.th = 0; drawSession(th !== 0); };
+  const thread = async i => {
+    const mine = cur;
+    mine.th = i;
+    mine.chats[i] ||= await get(`/api/chat/${encodeURIComponent(s.id)}?agent=${encodeURIComponent(threads[i - 1].id)}`).then(c => c.turns, () => []);
+    if (cur === mine && mine.th === i) drawSession(true);
+  };
+  anim ||= pg !== cur.pg;
+  cur.pg = pg;
+  for (const pane of cur.panes) pane.classList.toggle('still', !anim);
+  chatPane.replaceChildren(
+    h('div', { className: 'row', style: 'padding:16px 24px 12px;gap:16px' },
+      h('div', { className: 'col', style: 'gap:1px' }, h('h1', { className: 'el', style: 'margin:0;font-size:15px;font-weight:600' }, ag ? `${ag.type} · ${ag.description}` : s.title), h('span', { className: 'sub tn el' }, ag ? `Subagent of ${s.title}` : `${s.project} · ${fmt.date(s.start)} · ${fmt.dur(s.end - s.start)} · ${N} turns`)),
+      h('span', { className: 'key', style: 'gap:8px;color:var(--ink2);white-space:nowrap' }, dot(s.live ? 'var(--good)' : 'var(--muted)', 8, s.live ? 'live' : ''), s.live ? 'Active' : s.log?.endReason ? `Ended · ${s.log.endReason}` : 'Ended')),
+    h('div', { className: 'pills', role: 'group', 'aria-label': 'Thread' }, [null, ...threads].map((a, i) => h('button', { type: 'button', className: 'pill', 'aria-pressed': String(i === th), onclick: () => i !== th && thread(i) }, a ? `${a.type} · ${a.description}` : 'Main thread'))),
+    h('div', { className: 'fill thread' }, h('div', { className: 'turns' },
+      from > 0 && h('button', { type: 'button', className: 'more', onclick: () => turnTo(at.get(turns[from - 1].at) ?? 0) }, `Earlier turns · ${from} more`),
+      turns.slice(from, to).map((m, j) => {
+        const k = at.get(m.at), d = ag ? null : T[k], total = d || m, out = d?.log?.reason, cut = !ag && marks.find(c => c.i === k), kids = m.tools.map(c => agents.find(a => a.id === c.agent)).filter(Boolean), chips = m.tools.filter(c => !c.agent);
+        return h('div', { className: 'turn gup', style: `animation-delay:${j * 70}ms` },
+          cut && h('div', { className: 'sub rule' }, `Context compacted · ${fmt.num(cut.before)}${cut.after == null ? ' tokens before' : ` to ${fmt.num(cut.after)} tokens`}`),
+          h('div', { className: 'said' }, h('span', { className: 'sub tn', style: 'font-size:11.5px' }, ag ? 'From the main thread' : `Turn ${from + j + 1} · ${fmt.clock(m.at)}`), h('button', { type: 'button', className: 'bubble', 'aria-pressed': String(!ag && k === ti), onclick: () => d && turnTo(k) }, said(m.prompt))),
+          chips.length > 0 && h('div', { className: 'chips' }, chips.slice(0, 8).map(c => h('span', { className: 'chip' }, dot(c.isError ? 'var(--crit)' : 'var(--axis)'), h('b', {}, c.name), h('span', { className: 'el' }, c.arg), c.ms != null && h('span', { style: 'color:var(--muted)' }, fmt.dur(c.ms)))), chips.length > 8 && h('span', { className: 'chip' }, `+${chips.length - 8} more`)),
+          kids.map(a => h('div', { className: 'card' }, h('i', { className: 'sw', style: `background:${family(a.model)[2]}` }), h('span', { className: 'el' }, h('b', { style: 'font-weight:500' }, a.type), ' ', h('span', { style: 'color:var(--ink2)' }, a.description)), h('span', { className: 'sub tn' }, `${family(a.model)[1]} · ${fmt.num(tok(a))} · ${fmt.usd(a.cost)} · ${fmt.dur(a.end - a.start)}`))),
+          m.reply && h('p', {}, m.reply),
+          h('div', { className: 'sub tn key', style: 'gap:8px;font-size:11.5px' }, h('i', { className: 'sw', style: `width:8px;height:8px;background:${family(m.model)[2]}` }), `${family(m.model)[1]} · ${fmt.num(tok(total))} tokens · ${fmt.usd(total.cost)} · ${fmt.dur(d?.log?.durationMs ?? m.end - m.at)}`, out && out !== 'answer' && h('span', { className: 'key', style: 'gap:5px;color:var(--ink2)' }, dot(tone(out)), out)));
+      }),
+      !n && h('span', { className: 'sub' }, 'No turn in this thread.'),
+      to < n && h('button', { type: 'button', className: 'more', onclick: () => turnTo(at.get(turns[to].at) ?? N - 1) }, 'Later turns'))));
+  const all = agg(s.usage), used = Object.entries(s.tools).sort((a, b) => b[1].calls - a[1].calls), calls = sum(used, e => e[1].calls), d = T[ti], band = 308 / Math.max(1, N), bw = Math.min(8, Math.max(1.5, band - 1.5)), mx = i => (i + .5) * band, top = Math.max(1, ...T.map(tok));
+  const ctx = T.map((o, i) => o.log?.contextPercent == null ? '' : `${mx(i).toFixed(1)},${(46 - o.log.contextPercent / 100 * 40).toFixed(1)}`);
+  const ids = new Set(agents.map(a => a.id)), under = groupBy(agents, a => ids.has(a.parent) ? a.parent : ''), tree = [], walk = (p, depth) => (under.get(p) || []).forEach(a => { tree.push({ ...a, depth }); walk(a.id, depth + 1); });
+  walk('', 0);
+  const side = {
+    tools: () => used.map(([name, o]) => h('div', { style: 'display:grid;grid-template-columns:110px minmax(0,1fr) auto;align-items:center;gap:10px' }, h('span', { className: 'mono el', style: 'color:var(--ink)' }, name), gbar(div(o.calls, used[0][1].calls)), h('span', { className: 'sub tn' }, o.errors ? `${o.calls} · ${o.errors} failed` : String(o.calls)))),
+    agents: () => [tree.map(a => h('div', { style: `display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:2px 10px;padding-left:${a.depth * 16}px` }, h('i', { className: 'sw', style: `width:8px;height:8px;background:${family(a.model)[2]}` }), h('span', { className: 'el', style: 'font-weight:500' }, a.type + ' ', h('span', { style: 'font-weight:400;color:var(--ink2)' }, a.description)), h('span', { className: 'tn' }, fmt.num(tok(a))), h('span'), h('span', { className: 'sub tn', style: 'grid-column:2/-1' }, `${family(a.model)[1]} · ${fmt.usd(a.cost)} · ${fmt.dur(a.end - a.start)} · ${a.toolCalls} tools`))),
+      detail.workflows.map(w => h('div', { className: 'line', style: 'display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding-top:10px' }, h('span', { style: 'font-weight:500' }, 'Workflow · ' + w.name), h('span', { style: 'color:var(--ink2)' }, w.status), h('span', { className: 'sub tn', style: 'grid-column:1/-1' }, `${w.agents} agents · ${fmt.num(w.tokens)} tokens · ${w.toolCalls} tool calls · ${fmt.dur(w.durationMs)}`))),
+      !tree.length && h('span', { className: 'sub' }, 'No subagent ran in this session.')],
+    events: () => detail.events.length ? detail.events.map(e => h('div', { style: 'display:grid;grid-template-columns:40px minmax(0,1fr);gap:0 10px' }, h('span', { className: 'sub tn' }, fmt.clock(e.at)), h('span', { className: 'mono', style: 'color:var(--ink)' }, e.kind), h('span'), h('span', { className: 'sub' }, e.detail))) : h('span', { className: 'sub' }, 'No event recorded. Events start when the usage-log mod loads.'),
+    info: () => [['Project', s.project], ['Folder', s.cwd, 'mono'], ['Version', s.version], ['Session ID', s.id, 'mono'], ['Entry point', s.entrypoint], ['Ledger cost', s.log?.engineCost == null ? null : fmt.usd(s.log.engineCost)]].map(([label, v, cls = '']) => h('div', { style: 'display:grid;grid-template-columns:84px minmax(0,1fr);gap:10px' }, h('span', { className: 'sub' }, label), h('span', { className: cls + ' el', title: v }, v ?? '–'))),
+  };
+  sidePane.replaceChildren(
+    facts([[fmt.num(all.tokens), `tokens, ${fmt.int(all.requests)} requests`], [fmt.dur(s.end - s.start), `${N} turns`], [fmt.pct(all.p7), 'of the weekly limit'], [fmt.int(calls), `tool calls, ${sum(used, e => e[1].errors)} failed`], [fmt.usd(all.cost), 'estimated cost'], [s.log?.context?.percent == null ? '–' : s.log.context.percent + '%', `context, ${s.compactions} compactions`]], 2, 22),
+    h('div', { className: 'col line', style: 'gap:8px' },
+      h('div', { className: 'row' }, title('Turn by turn'), h('div', { className: 'sub legend', style: 'gap:12px' }, h('span', { className: 'key' }, h('i', { style: 'width:12px;height:2px;background:var(--plan)' }), 'Context'), key('var(--plan)', 'Tokens'), h('span', { className: 'key' }, dot('var(--crit)'), 'Error'))),
+      chart('308 114', 'Context fill and tokens for each turn', `<rect class="band" x="${ti * band}" y="0" width="${band}" height="106" rx="3" fill="var(--wash)"/><line x1="0" x2="308" y1="46" y2="46" class="g"/><line x1="0" x2="308" y1="104" y2="104" class="g"/>
+        <path d="${marks.map(c => `M${(c.i * band).toFixed(1)},6V46`).join('')}" fill="none" stroke="var(--axis)"/><g class="sp"><path d="${ctx.map((p, i) => p && (ctx[i - 1] ? 'L' : 'M') + p).join('')}" fill="none" stroke="var(--plan)" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"/></g>
+        <g class="gy" style="transform-origin:0 104px"><path d="${T.map((o, i) => { const t = Math.max(1, tok(o) / top * 40); return bar(mx(i) - bw / 2, bw, 104, 104 - t, Math.min(2, bw / 2, t)); }).join('')}" fill="var(--plan)"/></g>
+        <path d="${T.map((o, i) => o.log?.reason === 'error' ? `M${(mx(i) - 2).toFixed(1)},110a2,2 0 1,0 4,0a2,2 0 1,0 -4,0` : '').join('')}" fill="var(--crit)"/>`, { style: 'height:auto;display:block' })),
+    d && h('div', { className: 'col line', style: 'gap:10px' },
+      h('div', { className: 'row', style: 'gap:8px' }, h('h2', { className: 'h', style: 'margin-right:auto' }, `Turn ${ti + 1} of ${N}`), d.log && h('span', { className: 'key', style: 'color:var(--ink2)' }, dot(tone(d.log.reason)), d.log.reason), step('Previous turn', ICON.prev, () => turnTo(ti - 1)), step('Next turn', ICON.next, () => turnTo(ti + 1))),
+      facts([[fmt.clock(d.at), 'started'], [fmt.dur(d.log?.durationMs ?? d.end - d.at), 'duration'], [fmt.num(tok(d)), 'tokens'], [fmt.usd(d.cost), 'estimated cost'], [fmt.int(d.toolCalls), 'tool calls'], [d.log?.contextPercent == null ? '–' : d.log.contextPercent + '%', 'context fill']], 3)),
+    h('div', { className: 'col line', style: 'gap:10px' }, seg('More details', [['tools', 'Tools'], ['agents', 'Subagents'], ['events', 'Events'], ['info', 'Info']], state.side, v => { state.side = v; drawSession(); }), side[state.side]()));
+}
+
+// Tools: totals, every tool, calls per day, MCP servers, subagent types and the failures, skills and hooks lists
+function toolsView(sc) {
+  const rows = toolRows(sc.sessions), T = k => sum(rows, o => o[k]), calls = T('calls'), mcp = rows.filter(o => o.server), mcpCalls = sum(mcp, o => o.calls);
+  const SORT = { calls: ['Calls', o => o.calls], time: ['Total time', o => o.ms], tokens: ['Tokens returned', o => o.chars], failed: ['Failure rate', o => div(o.errors, o.calls)] };
+  const types = rollup(sc.sessions.flatMap(x => x.s.agents), a => a.type).sort((a, b) => b.tokens - a.tokens), peak = sc.D.reduce((a, o) => o.calls > a.calls ? o : a), ranked = k => [...groupBy(sc.sessions.flatMap(x => Object.entries(x.s[k])), e => e[0])];
+  const extra = live(panel('grid-column:span 4;animation-delay:.35s', ''), redraw => {
+    const kind = state.extra, fails = sc.sessions.flatMap(x => x.s.fails.map(f => ({ ...f, s: x.s }))).filter(f => !state.tool || toolKey(f.tool) === state.tool).sort((a, b) => b.at - a.at);
+    const list = kind === 'fails' ? fails.slice(0, 40).map(f => [f.text || 'Failed', fmt.date(f.at), `${f.tool} · ${f.s.title}`, () => go('sessions', f.s.id)])
+      : kind === 'skills' ? [...ranked('skills').map(([name, es]) => [name, sum(es, e => e[1]), 'Skill']), ...ranked('commands').map(([name, es]) => ['/' + name, sum(es, e => e[1]), 'Command'])].sort((a, b) => b[1] - a[1]).map(([name, v, note]) => [name, `${fmt.int(v)} runs`, note])
+      : ranked('hooks').map(([event, es]) => { const runs = sum(es, e => e[1].n), blocked = sum(es, e => e[1].blocked); return [event, `${fmt.int(runs)} runs`, `${blocked ? fmt.int(blocked) + ' blocked · ' : ''}${fmt.dur(div(sum(es, e => e[1].ms), runs))} on average`]; });
+    return [h('div', { className: 'ph', style: 'padding-left:20px' }, seg('List', [['fails', 'Recent failures'], ['skills', 'Skills and commands'], ['hooks', 'Hooks']], kind, v => { state.extra = v; redraw(); }), h('span', { className: 'sub tn el' }, kind === 'fails' ? state.tool || 'all tools' : '')),
+      h('div', { className: 'fill scroll col', style: 'padding:0 16px 10px' }, list.map(([head, val, note, pick], i) => h('button', { type: 'button', className: 'link pair gup', style: `cursor:${pick ? 'pointer' : 'default'};animation-delay:${Math.min(i, 14) * 40}ms`, onclick: pick }, h('span', { className: 'mono el', style: 'color:var(--ink)' }, head), h('span', { className: 'sub tn' }, val), h('span', { className: 'sub el' }, note))),
+        !list.length && h('span', { className: 'sub', style: 'padding:8px' }, kind === 'fails' ? 'No recent failure for this tool.' : kind === 'skills' ? 'No skill or command ran in this range.' : 'No settings hook run is logged in this range.'))];
+  });
+  const servers = live(panel('grid-column:span 4;animation-delay:.21s', ''), () => {
+    const schema = o => sum((cx?.d.items || []).filter(it => it.name.startsWith(`mcp__${o.server}__`)), it => it.tok), total = sum(mcp, schema);
+    return [h('div', { className: 'ph' }, title('MCP servers'), h('span', { className: 'sub tn' }, total ? `${fmt.kt(total)} schema tokens when loaded` : '')),
+      table('minmax(0,1fr) 40px 50px 52px 92px', 'mrrrr', ['Server', 'Tools', 'Calls', 'Failed', 'Schema tokens'], mcp.map(o => ({ cells: [o.server, o.kinds.size, fmt.int(o.calls), fmt.pct(div(o.errors, o.calls) * 100), schema(o) ? fmt.kt(schema(o)) : '–'] })), 'No MCP tool was called in this range.')];
+  });
+  if (!cx) loadCx().then(servers.redraw, () => {});
+  return h('div', { className: 'grid12', style: 'grid-template-rows:108px 336px minmax(300px,1fr)' },
+    strip('Tool totals', [
+      ['Tool calls', calls, fmt.int, '', `${div(calls, sum(sc.sessions, x => x.s.prompts)).toFixed(1)} per prompt`],
+      ['Failed', div(T('errors'), calls) * 100, fmt.pct, '', `${fmt.int(T('errors'))} calls`],
+      ['Time in tools', T('ms'), fmt.dur, '', `${fmt.dur(div(T('ms'), T('timed')))} a call`],
+      ['Permission prompts', T('asked'), fmt.int, '', `${fmt.int(T('denied'))} denied`],
+      ['Tokens from results', T('chars') / 4, fmt.num, '', 'added to context'],
+      ['MCP calls', mcpCalls, fmt.int, '', `${fmt.pct(div(mcpCalls, calls) * 100)} of calls · ${mcp.length} servers`],
+    ]),
+    live(panel('grid-column:span 8;animation-delay:.07s', ''), redraw => {
+      const [label, f] = SORT[state.tsort], max = Math.max(1e-9, ...rows.map(f));
+      return [h('div', { className: 'ph' }, h('div', { className: 'row', style: 'align-items:baseline;gap:16px;white-space:nowrap' }, title('Tools', ' · select one to see its failures'), h('span', { className: 'sub key' }, dot('var(--crit)'), 'failed above 5%')), seg('Sort tools by', [['calls', 'Calls'], ['time', 'Time'], ['tokens', 'Tokens'], ['failed', 'Failed']], state.tsort, v => { state.tsort = v; redraw(); })),
+        table('170px minmax(0,1fr) 56px 68px 60px 76px 64px 92px', 'mlrrrrrr', ['Tool', label, 'Calls', 'Failed', 'Avg', 'Total time', 'Tokens', 'Asked · denied'], [...rows].sort((a, b) => f(b) - f(a)).map(o => ({ tall: 34, on: o.name === state.tool, pick: () => { state.tool = o.name === state.tool ? '' : o.name; state.extra = 'fails'; redraw(); extra.redraw(); },
+          cells: [o.name, gbar(f(o) / max), fmt.int(o.calls), h('span', { className: 'key', style: 'justify-content:flex-end;width:100%' }, dot(div(o.errors, o.calls) > .05 ? 'var(--crit)' : 'transparent'), fmt.pct(div(o.errors, o.calls) * 100)), o.timed ? fmt.dur(o.ms / o.timed) : '–', o.timed ? fmt.dur(o.ms) : '–', fmt.num(o.chars / 4), o.asked ? `${o.asked} · ${o.denied}` : '–'] })), 'No tool call in this range.')];
+    }),
+    panel('grid-column:span 4;animation-delay:.14s', 'pad', h('div', { className: 'row', style: 'align-items:baseline' }, title('Calls each day'), h('span', { className: 'sub tn' }, `${fmt.int(sc.act.calls / sc.days.length)} a day`)),
+      h('div', { className: 'fill', style: 'margin-top:8px' }, columns('Tool calls each day', [34, 400, 12, 206, 400, 236], sc.days, [{ color: 'var(--plan)', values: sc.D.map(o => o.calls) }], fmt.int, { ticks: 2, cap: 16 })),
+      h('div', { className: 'sub tn' }, peak.calls ? `Peak ${fmt.int(peak.calls)} on ${fmt.long(peak.day)}` : 'Nothing in this range.')),
+    servers,
+    panel('grid-column:span 4;animation-delay:.28s', '', h('div', { className: 'ph' }, title('Subagent types'), h('span', { className: 'sub' }, `${fmt.pct(div(sum(sc.buckets.filter(b => b.sub), tok), sc.t.tokens) * 100)} of tokens`)),
+      table('minmax(0,1fr) 44px 66px 64px 72px', 'lrrrr', ['Type', 'Runs', 'Avg time', 'Avg tools', 'Tokens'], types.map(a => ({ cells: [h('b', {}, a.name), a.n, fmt.dur(sum(a.rs, r => r.end - r.start) / a.n), (sum(a.rs, r => r.toolCalls) / a.n).toFixed(1), fmt.num(a.tokens)] })), 'No subagent ran in this range.')),
+    extra);
+}
+
+// Breakdown: projects, models, the largest sessions, cost by token type and the estimate against the ledger
+function breakdown(sc) {
+  const ranged = data.sessions.flatMap(s => s.usage.filter(b => b.day >= sc.cut).map(b => ({ ...b, s }))), projects = rollup(ranged, b => b.s.project).sort((a, b) => b.tokens - a.tokens), pMax = Math.max(1, ...projects.map(p => p.tokens));
+  const fams = FAMILIES.map(([, name, color], i) => ({ name, color, ...agg(sc.buckets.filter(b => fam(b.model) === i)) })).filter((f, i) => i < 4 || f.requests), fMax = Math.max(1, ...fams.map(f => f.tokens));
+  const top = [...sc.sessions].sort((a, b) => b.t.tokens - a.t.tokens).slice(0, 8), led = sc.sessions.filter(x => x.s.log?.engineCost != null).map(x => ({ s: x.s, est: sum(x.s.usage, b => b.cost), eng: x.s.log.engineCost }));
+  const est = sum(led, r => r.est), eng = sum(led, r => r.eng), off = div(est - eng, eng) * 100, [price] = Object.values(data.prices);
+  const prices = () => dialog('Price table', 760, h('div', { className: 'ph', style: 'padding-top:16px' }, h('div', { className: 'col' }, h('span', { style: 'font-size:15px;font-weight:600' }, 'Price table'), h('span', { className: 'sub' }, 'USD per 1M tokens')), closer()),
+    table('minmax(0,1fr) 64px 64px 80px 96px 96px', 'mrrrrr', ['Model prefix', 'Input', 'Output', 'Cache read', 'Cache write 5m', 'Cache write 1h'], Object.entries(data.prices).map(([model, p]) => ({ tall: 34, cells: [model, ...['input', 'output', 'read', 'write5m', 'write1h'].map(k => '$' + p[k].toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }))] }))),
+    h('div', { className: 'sub', style: 'padding:12px 24px 0' }, `Cache write is the input price times ${price.write5m / price.input} for 5 minutes and times ${price.write1h / price.input} for 1 hour.`));
+  return h('div', { className: 'grid12', style: 'grid-template-rows:330px minmax(300px,1fr)' },
+    panel('grid-column:span 8', '', h('div', { className: 'ph' }, title('Projects', ' · select one to filter'), h('div', { className: 'sub legend' }, legend(FAMILIES.map((_, i) => ranged.some(b => fam(b.model) === i))))),
+      table('120px minmax(0,1fr) 70px 70px 64px 64px 70px', 'llrrrrr', ['Project', 'Tokens by model', 'Tokens', 'Est. cost', 'Weekly %', 'Sessions', 'Cache hit'], projects.map(p => ({ tall: 40, on: p.name === state.project, dim: state.project && p.name !== state.project, pick: () => { state.project = p.name === state.project ? '' : p.name; render(); },
+        cells: [h('b', {}, p.name), h('span', { className: 'gbar stack', style: `width:${wide(p.tokens, pMax)}` }, FAMILIES.map(([, , color], i) => { const v = sum(p.rs.filter(b => fam(b.model) === i), tok); return v > 0 && h('i', { style: `flex:${v} 1 0;background:${color}` }); })), fmt.num(p.tokens), fmt.usd0(p.cost), p.wk ? fmt.pct(p.wk) : '–', new Set(p.rs.map(b => b.s.id)).size, fmt.pct(hit(p))] })), 'Nothing in this range.')),
+    panel('grid-column:span 4;animation-delay:.07s', '', h('div', { className: 'ph' }, title('Models'), h('span', { className: 'sub' }, 'share of tokens')),
+      h('div', { className: 'fill', style: `display:grid;grid-template-rows:repeat(${fams.length},minmax(0,1fr));padding:0 24px 10px` }, fams.map((m, i) => h('div', { className: 'gup', style: `display:grid;grid-template-columns:104px minmax(0,1fr) 52px;align-items:center;align-content:center;gap:4px 12px;animation-delay:${70 + i * 50}ms` },
+        h('span', { className: 'key', style: 'gap:8px;font-weight:500' }, h('i', { className: 'sw', style: `background:${m.color}` }), m.name), gbar(m.tokens / fMax, m.color, 'slot'), h('span', { className: 'tn r' }, fmt.pct(div(m.tokens, sc.t.tokens) * 100)), h('span', { className: 'sub tn', style: 'grid-column:1/-1' }, `${fmt.num(m.tokens)} tokens · ${fmt.usd0(m.cost)} · ${fmt.pct(m.wk)} of the week`))))),
+    panel('grid-column:span 5;animation-delay:.14s', '', h('div', { className: 'ph' }, title('Largest sessions', ' · select one to open its chat')),
+      table('minmax(0,1fr) 120px 64px 64px', 'llrr', ['Session', '', 'Tokens', 'Weekly %'], top.map(x => ({ tall: 46, pick: () => go('sessions', x.s.id), cells: [h('span', { className: 'col' }, h('b', { className: 'el' }, x.s.title), h('span', { className: 'sub el' }, `${x.s.project} · ${fmt.day(dayOf(x.s.start))}`)), gbar(x.t.tokens / top[0].t.tokens), fmt.num(x.t.tokens), fmt.pct(x.t.p7)] })), 'No session in this range.')),
+    panel('grid-column:span 4;animation-delay:.21s', '', h('div', { className: 'ph' }, title('Cost by token type'), h('span', { className: 'sub tn el' }, `Cache saved an estimated ${fmt.usd0(sc.t.saved)}`)),
+      table('minmax(0,1fr) 54px 54px 68px 72px', 'lrrrr', ['Model', 'Input', 'Output', 'Cache read', 'Cache write'], [...fams, { name: 'Total', color: 'transparent', ...sc.t }].map(m => ({ cells: [h('span', { className: 'key', style: `gap:8px;font-weight:${m.name === 'Total' ? 500 : 400}` }, h('i', { className: 'sw', style: `background:${m.color}` }), m.name), ...TYPES.map(([, , k]) => fmt.usd0(m[k]))] })))),
+    panel('grid-column:span 3;padding:18px 24px 20px;animation-delay:.28s', '', title('Estimate against ledger'),
+      h('div', { style: 'display:flex;align-items:flex-end;gap:10px;margin-top:12px' }, h('span', { className: 'huge' }, led.length ? (off < 0 ? '−' : '+') + Math.abs(off).toFixed(1) : '–', h('small', {}, '%')), h('span', { className: 'sub', style: 'padding-bottom:4px' }, led.length ? `estimate runs ${off < 0 ? 'low' : 'high'}` : 'no session has a ledger')),
+      h('div', { className: 'tn col', style: 'gap:9px;margin-top:20px' }, [['Price-table estimate', fmt.usd(est)], ['Engine ledger', fmt.usd(eng)], ['Difference', (est < eng ? '' : '+') + fmt.usd(est - eng)], ['Sessions compared', `${led.length} of ${sc.sessions.length}`]].map(([label, v]) => h('div', { className: 'row' }, h('span', { style: 'color:var(--ink2)' }, label), h('span', {}, v)))),
+      h('div', { className: 'sub line', style: 'margin-top:18px;padding-top:14px' }, 'Largest gaps'),
+      h('div', { className: 'tn col', style: 'margin-top:6px' }, [...led].sort((a, b) => Math.abs(b.est - b.eng) - Math.abs(a.est - a.eng)).slice(0, 3).map(r => h('button', { type: 'button', className: 'link', style: 'justify-content:space-between;gap:12px', onclick: () => go('sessions', r.s.id) }, h('span', { className: 'el' }, r.s.title), h('span', {}, (r.est < r.eng ? '' : '+') + fmt.usd(r.est - r.eng))))),
+      h('button', { type: 'button', className: 'ctl wide', onclick: prices }, 'Open price table')));
+}
+
+// Reads what sessions loaded and the applied rules; the draft starts as a copy of them
+async function loadCx() {
+  const d = await get('/api/context');
+  cx = { d, rules: { ...d.rules }, order: d.order && [...d.order], cap: { ...d.cap }, note: '' };
+}
+// What each kind's header and footer say
+const ABOUT = {
+  tools: [' · in every request', 'Defer keeps a tool’s name in context and loads its description when Claude asks for it.'],
+  skills: [' · the listing is in every request, a skill loads when invoked', 'The listing is one block, so a single skill cannot be removed from it. Rewrite the listing to leave skills out.'],
+  blocks: [' · each time the engine injects one', 'A rule covers every block of its type. Dropping a block can remove a reminder Claude relies on.'],
+  sections: [' · in every request, in this order', 'Dropping or rewriting a section can change how Claude behaves. Shared sections stay ahead of session ones. Every change can be reset.'],
+};
+// Context: what sessions load, a draft of rules on it, and the changes waiting to be applied
+function contextView() {
+  const root = h('div', { className: 'panes', style: 'grid-template-columns:224px minmax(0,1fr) 324px;grid-template-rows:108px minmax(0,1fr)' }), cols = 'minmax(0,1fr) 96px 52px 180px 52px 26px';
+  const draw = () => {
+    const { d, rules: R, cap } = cx, A = d.rules, items = d.items, kind = state.kind, inK = items.filter(o => o.kind === kind), kMax = Math.max(1, ...inK.map(o => o.tok));
+    const base = o => o.kind === 'tools' && o.deferred ? DEFERRED : o.tok, fixed = o => o.kind === 'tools' || o.kind === 'sections' || o.id === 'k:listing';
+    const costOf = (o, r) => !r || base(o) === DEFERRED ? base(o) : r.a === 'defer' ? DEFERRED : r.a === 'drop' ? 0 : Math.max(1, Math.round(o.tok * (r.text ?? '').length / Math.max(1, o.text.length)));
+    const sig = r => r ? r.a + (r.text ?? '') : '', same = (a, b) => JSON.stringify(a) === JSON.stringify(b), group = o => /^mcp__(.+?)__/.exec(o.name)?.[1] || 'Built-in';
+    const touch = f => { f(); cx.note = ''; draw(); }, set = patch => touch(() => { for (const [id, r] of Object.entries(patch)) r ? R[id] = r : delete R[id]; }), setCap = patch => touch(() => Object.assign(cap, patch));
+    const sects = items.filter(o => o.kind === 'sections').sort((a, b) => a.pos - b.pos), rank = o => { const i = cx.order.indexOf(o.name); return i < 0 ? sects.length + o.pos : i; }, ord = cx.order ? [...sects].sort((a, b) => rank(a) - rank(b)) : sects;
+    const move = (j, by) => touch(() => { const a = ord.map(o => o.name), k = j + by; if (k < 0 || k >= a.length) return; [a[j], a[k]] = [a[k], a[j]]; cx.order = same(a, sects.map(o => o.name)) ? null : a; });
+    const capS = c => c.on ? `${c.k}K${c.part ? ', partial reads allowed' : ''}` : 'Off', LABEL = { defer: 'Deferred', rewrite: 'Rewritten', drop: 'Dropped' };
+    const chg = [...items.filter(o => R[o.id] || A[o.id]).map(o => ({ name: o.name, what: R[o.id] ? LABEL[R[o.id].a] : 'Back to default', isLive: sig(R[o.id]) === sig(A[o.id]), cost: `${fmt.kt(base(o))} → ${fmt.kt(costOf(o, R[o.id]))}`, reset: R[o.id] && (() => set({ [o.id]: null })) })),
+      ...(cx.order || d.order ? [{ name: 'Section order', what: cx.order ? 'Reordered' : 'Back to default', isLive: same(cx.order, d.order), reset: cx.order && (() => touch(() => cx.order = null)) }] : []),
+      ...(cap.on || d.cap.on ? [{ name: 'File read cap', what: capS(cap), isLive: capS(cap) === capS(d.cap), reset: cap.on && (() => setCap({ on: false })) }] : [])];
+    const pending = chg.filter(c => !c.isLive).length, changed = chg.filter(c => c.reset).length, fixedOf = rules => sum(items.filter(fixed), o => costOf(o, rules[o.id])), now = fixedOf({}), draft = fixedOf(R);
+    const send = (body, note) => fetch('/api/rules', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.ok ? loadCx() : Promise.reject(new Error(`/api/rules returned ${r.status}`))).then(() => { cx.note = note; }, e => { cx.note = e.message; }).then(draw);
+    const edit = o => {
+      const area = h('textarea', { id: 'cx-edit', className: 'mono txt', value: R[o.id]?.text ?? o.text }), est = h('span', { className: 'sub tn' }), keep = r => { closeLayer(); set({ [o.id]: r }); };
+      const size = () => { const v = Math.max(1, Math.round(o.tok * area.value.length / Math.max(1, o.text.length))); est.textContent = `about ${fmt.kt(v)} tokens · ${v > o.tok ? 'adds ' + fmt.kt(v - o.tok) : 'saves ' + fmt.kt(o.tok - v)}`; };
+      area.spellcheck = false;
+      area.oninput = size;
+      size();
+      dialog('Rewrite text', 980,
+        h('div', { className: 'ph', style: 'padding-top:16px' }, h('div', { className: 'col' }, h('span', { className: 'mono', style: 'font-size:14px;font-weight:500;color:var(--ink)' }, o.name), h('span', { className: 'sub' }, `${KINDS[o.kind]} · ${fixed(o) ? 'in every request' : o.kind === 'skills' ? 'loaded when invoked' : 'each time it is injected'}${o.chars > o.text.length ? ` · the first ${fmt.num(o.text.length)} of ${fmt.num(o.chars)} characters` : ''}`)), closer()),
+        h('div', { style: 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:8px 24px 0' },
+          h('div', { className: 'col', style: 'gap:8px' }, h('div', { className: 'row', style: 'align-items:baseline' }, h('span', { className: 'h' }, 'Original'), h('span', { className: 'sub tn' }, fmt.kt(o.tok) + ' tokens')), h('pre', { className: 'mono txt' }, o.text)),
+          h('div', { className: 'col', style: 'gap:8px' }, h('div', { className: 'row', style: 'align-items:baseline' }, h('label', { className: 'h', htmlFor: 'cx-edit' }, 'Rewrite'), est), area)),
+        h('div', { className: 'row', style: 'gap:8px;padding:14px 24px 0' }, h('span', { className: 'sub', style: 'margin-right:auto;max-width:520px' }, 'Claude reads only the rewrite. If it leaves out how something works, Claude may stop using it correctly. Reset brings the original back.'),
+          h('button', { type: 'button', className: 'ctl', style: 'height:34px;padding:0 14px', onclick: () => keep(null) }, 'Reset to default'), h('button', { type: 'button', className: 'go', onclick: () => keep(area.value.trim() && area.value.trim() !== o.text.trim() ? { a: 'rewrite', text: area.value } : null) }, 'Keep rewrite')));
+    };
+    const visible = o => state.cf === 'all' || R[o.id] || A[o.id];
+    const row = (o, j) => {
+      const r = R[o.id], a = r ? r.a : 'asis', mark = r || A[o.id], sec = o.kind === 'sections', after = costOf(o, r);
+      const note = o.kind === 'tools' ? o.deferred && 'deferred' : o.id === 'k:listing' ? 'in every request' : o.kind === 'skills' ? 'when invoked' : sec ? o.scope : `seen ${fmt.int(o.seen)} times`;
+      return h('div', { className: 'tr gup', style: `grid-template-columns:${cols};min-height:36px;animation-delay:${Math.min(j, 14) * 25}ms` },
+        h('button', { type: 'button', className: 'link', style: `opacity:${a === 'drop' ? .5 : 1}`, onclick: () => edit(o) }, h('i', { className: 'dot', style: `width:7px;height:7px;background:${mark && sig(r) === sig(A[o.id]) ? 'var(--plan)' : 'transparent'};box-shadow:inset 0 0 0 1.5px ${mark ? 'var(--plan)' : 'transparent'}` }), h('span', { className: 'mono el', style: `color:var(--ink);text-decoration:${a === 'drop' ? 'line-through' : 'none'}` }, o.name.replace(/^mcp__.+?__/, '')), h('span', { className: 'sub el' }, note)),
+        sec ? h('span', { className: 'key', style: 'gap:4px' }, step('Move up', ICON.up, () => move(j, -1)), step('Move down', ICON.down, () => move(j, 1)), h('span', { className: 'sub tn', style: 'margin-left:4px' }, `${j + 1} of ${sects.length}`))
+          : h('span', { className: 'slot thin twin' }, h('i', { style: `width:${wide(o.tok, kMax)};background:var(--axis)` }), h('i', { style: `width:${wide(Math.min(after, o.tok), kMax)}` })),
+        h('span', { className: 'r' }, fmt.kt(base(o))),
+        seg('Action', [['asis', 'As is'], ...(o.kind === 'tools' && !o.deferred ? [['defer', 'Defer']] : []), ['rewrite', 'Rewrite'], ...(o.kind === 'blocks' || sec || o.id === 'k:listing' ? [['drop', 'Drop']] : [])], a, id => id === 'rewrite' ? edit(o) : set({ [o.id]: id === 'asis' ? null : { a: id } })),
+        h('span', { className: 'r', style: `color:${r ? 'var(--ink)' : 'var(--muted)'}` }, fmt.kt(after)), step('Reset to default', ICON.reset, () => set({ [o.id]: null }), `visibility:${r ? 'visible' : 'hidden'}`));
+    };
+    const rows = kind === 'sections' ? ord.map((o, j) => visible(o) && row(o, j)) : kind !== 'tools' ? inK.filter(visible).map(row) : ['Built-in', ...new Set(inK.map(group).filter(g => g !== 'Built-in'))].flatMap(g => {
+      const gi = inK.filter(o => group(o) === g), can = gi.filter(o => !o.deferred), n = gi.filter(o => R[o.id]).length, isOpen = !!state.openG[g] || state.cf === 'changed';
+      return [h('div', { className: 'tr top', style: `grid-template-columns:${cols}` },
+        h('button', { type: 'button', className: 'link', 'aria-expanded': String(isOpen), onclick: () => { state.openG[g] = !isOpen; draw(); } }, icon(ICON.down, 12, 'chev' + (isOpen ? ' open' : '')), h('b', {}, g), h('span', { className: 'sub el' }, `${gi.length} tools${n ? ` · ${n} changed` : ''}`)), h('span'), h('span', { className: 'r' }, fmt.kt(sum(gi, base))),
+        can.length ? seg('Action for the group', [['asis', 'As is'], ['defer', 'Defer all']], !n ? 'asis' : can.every(o => R[o.id]?.a === 'defer') ? 'defer' : '', id => set(Object.fromEntries((id === 'defer' ? can : gi).map(o => [o.id, id === 'defer' ? { a: 'defer' } : null])))) : h('span', { className: 'sub' }, 'deferred'),
+        h('span', { className: 'r', style: `color:${n ? 'var(--ink)' : 'var(--muted)'}` }, fmt.kt(sum(gi, o => costOf(o, R[o.id])))), h('span')), ...(isOpen ? gi.filter(visible).map(row) : [])];
+    });
+    const over = d.reads.filter(r => r.tokens > cap.k * 1e3), toggle = (label, on, onclick) => h('button', { type: 'button', className: 'tog', role: 'switch', 'aria-checked': String(on), 'aria-label': label, onclick });
+    const setting = (name, note, control, off) => h('div', { className: 'set' + (off ? ' off' : '') }, h('span', { className: 'col' }, h('span', { style: 'font-weight:500' }, name), h('span', { className: 'sub' }, note)), control);
+    root.classList.toggle('still', root.childElementCount > 0);
+    root.replaceChildren(
+      strip('Context totals', [
+        ['Fixed context', now, fmt.kt, '', 'in every request, before rules'], ['With your rules', draft, fmt.kt, '', pending ? `${fmt.kt(fixedOf(A))} until you apply` : 'live in every session'],
+        ['Saved per request', now - draft, fmt.kt, '', `${fmt.pct(div(now - draft, now) * 100)} of fixed context`], ['Saved on load', sum(items.filter(o => !fixed(o) && R[o.id]), o => base(o) - costOf(o, R[o.id])), fmt.kt, '', 'each time a changed item loads'],
+        ['Changed from default', changed, fmt.int, '', `${pending} not applied`], ['Cost to apply', d.miss, fmt.usd, '', `one cache miss in ${d.open} open sessions`],
+      ], true),
+      h('aside', { className: 'panel', 'aria-label': 'Kinds of context', style: 'animation-delay:.07s' },
+        h('div', { className: 'fill items', style: 'padding:10px 8px' }, Object.entries(KINDS).map(([id, label]) => {
+          const its = items.filter(o => o.kind === id), was = sum(its, base), next = sum(its, o => costOf(o, R[o.id])), n = its.filter(o => R[o.id]).length + (id === 'sections' && cx.order ? 1 : 0), files = id === 'files';
+          return h('button', { type: 'button', className: 'item', 'aria-pressed': String(id === kind), onclick: () => { state.kind = id; draw(); } }, h('b', {}, label), h('span', { className: 'tn r' }, files ? cap.on ? cap.k + 'K cap' : 'Off' : its.length ? fmt.kt(next) : '–'),
+            h('span', { className: 'sub el' }, files ? 'size cap' : its.length ? `${its.length} items${n ? ` · ${n} changed` : ''}` : 'no items yet'), h('span', { className: 'sub tn r' }, next !== was ? 'was ' + fmt.kt(was) : ''),
+            !files && its.length > 0 && h('span', { className: 'track', style: 'grid-column:1/-1;height:4px;margin-top:4px' }, h('i', { style: `width:${wide(next, was)};background:var(--plan);transition:width .3s` })));
+        })),
+        h('div', { className: 'sub foot', style: 'padding:12px 20px 16px' }, 'Rules are global. They apply to every session, from its next turn.')),
+      kind === 'files' ? panel('animation-delay:.1s', '', h('div', { className: 'ph' }, title('File reads', ' · files the main agent reads into its context')),
+          setting('Size cap', 'Stop a single read from going over a set size.', toggle('Size cap', cap.on, () => setCap({ on: !cap.on }))),
+          setting('Cap', 'In thousands of tokens, per read.', h('span', { className: 'key', style: 'gap:8px' }, step('Lower the cap', ICON.minus, () => setCap({ k: Math.max(5, cap.k - 5) })), h('span', { className: 'tn', style: 'min-width:44px;text-align:center;font-weight:500' }, cap.k + 'K'), step('Raise the cap', ICON.plus, () => setCap({ k: Math.min(100, cap.k + 5) }))), !cap.on),
+          setting('Allow partial reads under the cap', 'Claude can still read a slice of a larger file, as long as the slice fits.', toggle('Allow partial reads under the cap', cap.part, () => setCap({ part: !cap.part })), !cap.on),
+          h('div', { className: 'ph', style: 'padding-top:16px;border-top:1px solid var(--grid)' }, title('Largest reads', ' · by the main agent, in the last 30 days')),
+          table('minmax(0,1fr) 160px 64px 140px', 'mlrl', ['File', 'Tokens', 'Now', 'With this cap'], d.reads.map(r => { const isOver = cap.on && r.tokens > cap.k * 1e3; return { tall: 34, cells: [h('span', { title: r.file }, r.file.split(/[\\/]/).slice(-3).join('/')), gbar(r.tokens / d.reads[0].tokens), fmt.kt(r.tokens), h('span', { className: 'key', style: `color:${isOver ? 'var(--ink)' : 'var(--muted)'}` }, dot(!isOver ? 'transparent' : cap.part ? 'var(--warn)' : 'var(--crit)'), !cap.on ? 'unchanged' : !isOver ? 'fits' : cap.part ? `slices up to ${cap.k}K` : 'blocked')] }; }), 'No file read in the last 30 days.'),
+          h('div', { className: 'sub tn foot' }, cap.on ? `${over.length} of ${d.reads.length} of these reads are over the cap, ${fmt.kt(sum(over, r => r.tokens))} tokens between them.` : 'The cap is off. Every read goes into context whole.'))
+        : !items.length ? panel('align-items:center;justify-content:center;gap:12px;text-align:center;animation-delay:.1s', '', h('span', { style: 'font-size:15px;font-weight:500' }, 'No items yet'), h('span', { className: 'sub', style: 'max-width:380px' }, 'The list comes from what sessions load. Run one turn in any Claude Code session, then refresh.'), h('button', { type: 'button', className: 'ctl', onclick: load }, 'Refresh'))
+        : panel('animation-delay:.1s', '',
+          h('div', { className: 'ph' }, h('h2', { className: 'h el' }, KINDS[kind], h('span', { className: 'sub' }, ABOUT[kind][0])), h('div', { className: 'row', style: 'gap:14px;flex:none' }, h('span', { className: 'sub key' }, h('i', { className: 'dot', style: 'width:7px;height:7px;box-shadow:inset 0 0 0 1.5px var(--plan)' }), 'not applied', h('i', { className: 'dot', style: 'width:7px;height:7px;background:var(--plan);margin-left:8px' }), 'applied'), seg('Show', [['all', 'All'], ['changed', 'Changed']], state.cf, v => { state.cf = v; draw(); }))),
+          h('div', { className: 'tr th', style: `grid-template-columns:${cols}` }, ['Item', kind === 'sections' ? 'Order' : 'Tokens', 'Now', 'Action', 'After', ''].map((c, i) => h('span', { className: i === 2 || i === 4 ? 'r' : '' }, c))),
+          h('div', { className: 'fill scroll' }, rows, state.cf === 'changed' && !inK.some(o => R[o.id] || A[o.id]) && h('span', { className: 'sub', style: 'display:block;padding:8px 24px' }, 'Nothing is changed in this kind.')),
+          h('div', { className: 'sub foot' }, ABOUT[kind][1])),
+      h('aside', { className: 'panel', 'aria-label': 'Changes', style: 'animation-delay:.14s' },
+        h('div', { className: 'ph' }, title('Changes', pending ? ` · ${pending} not applied` : changed ? ' · all applied' : ''), changed > 0 && h('button', { type: 'button', className: 'more', style: 'padding:0 10px;margin-right:-10px', onclick: () => touch(() => { cx.rules = {}; cx.order = null; cap.on = false; }) }, 'Reset all')),
+        h('div', { className: 'fill scroll col', style: 'padding:0 16px 10px' }, chg.map(c => h('div', { style: 'display:grid;grid-template-columns:8px minmax(0,1fr) auto 26px;align-items:center;gap:1px 10px;padding:7px 8px' }, h('i', { className: 'dot', style: `background:${c.isLive ? 'var(--plan)' : 'transparent'};box-shadow:inset 0 0 0 1.5px var(--plan)` }), h('span', { className: 'mono el', style: 'color:var(--ink)' }, c.name), h('span', { className: 'sub tn' }, c.cost),
+          step('Reset to default', ICON.reset, c.reset, `grid-row:span 2;visibility:${c.reset ? 'visible' : 'hidden'}`), h('span'), h('span', { className: 'sub el', style: 'grid-column:2/4' }, `${c.what} · ${c.isLive ? 'applied' : 'not applied'}`))),
+          !chg.length && h('span', { className: 'sub', style: 'padding:8px' }, 'Nothing is changed from the default. Pick an action on any item to start.')),
+        h('div', { className: 'col foot', style: 'gap:10px;padding:14px 20px 18px' }, pending ? [
+          h('div', { className: 'col', style: 'gap:3px' }, h('span', { style: 'font-weight:500' }, d.open ? `One cache miss in each of ${d.open} open sessions` : 'No session is open'), h('span', { className: 'sub' }, `About ${fmt.usd(d.miss)} once, however many changes you apply together. Each session picks the rules up on its next turn.`)),
+          h('div', { style: 'display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px' }, h('button', { type: 'button', className: 'ctl', style: 'height:34px;padding:0 14px', onclick: () => touch(() => Object.assign(cx, { rules: { ...A }, order: d.order && [...d.order], cap: { ...d.cap } })) }, 'Discard'), h('button', { type: 'button', className: 'go', onclick: () => send({ rules: R, order: cx.order, cap }, 'Applied. Each session picks the rules up on its next turn. Undoing costs another cache miss.') }, `Apply ${pending} change${pending === 1 ? '' : 's'}`)),
+          cx.note && h('span', { className: 'sub', role: 'alert' }, cx.note)]
+          : [h('span', { className: 'sub' }, cx.note || (changed ? 'Every change is applied.' : 'Changes collect here, then apply together.')), d.canUndo && h('button', { type: 'button', className: 'ctl', style: 'height:34px', onclick: () => send({ undo: true }, 'The last apply is undone.') }, 'Undo last apply')])));
+  };
+  (cx ? Promise.resolve() : loadCx()).then(() => { header(); draw(); }).catch(e => root.replaceChildren(h('p', { className: 'note', role: 'alert', style: 'grid-column:1/-1' }, e.message)));
+  return root;
+}
+
+const VIEWS = { overview, sessions: sessionsView, tools: toolsView, breakdown, context: contextView };
+function render() {
   if (!data) return;
-  const [, name = '', id] = location.hash.split('/'), isDetail = name === 'session', t = ++seq;
-  $('filters').hidden = isDetail;
-  for (const a of $('nav').children) a.hash === '#/' + (isDetail ? 'sessions' : name in views ? name : '') ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current');
-  let nodes;
-  if (!isDetail) draws.length = 0;
-  try { nodes = isDetail ? await detail(decodeURIComponent(id)) : (views[name] || views[''])(scope()); }
-  catch (e) { nodes = h('p', { className: 'err' }, e.message); }
-  if (t !== seq) return;
-  if (isDetail) draws.length = 0;
-  $('main').replaceChildren(...[nodes].flat().filter(Boolean));
-  draws.forEach(d => d());
+  const [, view, id] = location.hash.split('/');
+  state.view = VIEWS[view] ? view : 'overview';
+  state.menu = false;
+  if (id) state.sel = decodeURIComponent(id);
+  $('tip').hidden = true;
+  header();
+  $('main').replaceChildren(VIEWS[state.view](scope()));
 }
-
-// Filter row
-function filters() {
-  const projects = [...new Set(data.sessions.map(s => s.project))].sort();
-  if (!projects.includes(state.project)) state.project = '';
-  $('filters').replaceChildren(
-    h('div', { className: 'seg', role: 'group', 'aria-label': 'Date range' }, [[7, '7 days'], [30, '30 days'], [90, '90 days'], [0, 'All time']].map(([n, label]) => h('button', { 'aria-pressed': String(state.range === n), onclick: () => { state.range = n; filters(); render(); } }, label))),
-    h('select', { 'aria-label': 'Project', onchange: e => { state.project = e.target.value; render(); } }, h('option', { value: '' }, 'All projects'), projects.map(p => h('option', { value: p, selected: p === state.project }, p))));
-}
-
 async function load() {
   document.body.classList.add('busy');
-  $('main').ariaBusy = 'true';
-  if (!data) $('main').replaceChildren(h('p', { className: 'dim', role: 'status' }, 'Reading transcripts. A first load takes about 10 seconds.'));
-  try { data = await get('/api/data'); $('stamp').textContent = 'Updated ' + fmt.date(data.generatedAt); filters(); await render(); }
-  catch (e) { $('main').replaceChildren(h('p', { className: 'err', role: 'alert' }, `Could not load usage data: ${e.message}. Check that the dashboard server runs, then press Refresh.`)); }
-  document.body.classList.remove('busy');
-  $('main').ariaBusy = 'false';
+  header();
+  if (!data) $('main').replaceChildren(h('p', { className: 'sub note', role: 'status' }, 'Reading transcripts. A first load takes about 10 seconds.'));
+  try { data = await get('/api/data'); cur = cx = null; document.body.classList.remove('busy'); render(); }
+  catch (e) { document.body.classList.remove('busy'); header(); $('main').replaceChildren(h('p', { className: 'note', role: 'alert' }, `Could not load usage data: ${e.message}. Check that the dashboard server runs, then refresh.`)); }
 }
-
-$('nav').append(...ROUTES.map(([r, label]) => h('a', { href: '#/' + r }, label)));
-$('refresh').onclick = load;
-addEventListener('hashchange', () => { scrollTo(0, 0); render(); });
-let resizing;
-addEventListener('resize', () => { clearTimeout(resizing); resizing = setTimeout(() => draws.forEach(d => d()), 100); });
+addEventListener('hashchange', render);
 load();
 </script>
 </body>
