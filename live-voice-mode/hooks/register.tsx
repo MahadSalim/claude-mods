@@ -1,23 +1,43 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, HookStream, ProcessSpawnChunk, ProcessSpawnResult, Register } from 'claude-code'
+import type { EngineInterface, HookStream, ProcessSpawnChunk, ProcessSpawnResult, Register, TurnStepToolUse } from 'claude-code'
 
-import type { VoiceStatus } from '../types'
+import type { VoiceLevels, VoiceLook, VoiceMode, VoiceStatus, VoiceVerbosity } from '../types'
 
 const PYTHON = 'C:/Users/Mahad/.cache/live-voice-mode/venv/Scripts/python.exe'
 const STOP_PHRASE = /^\W*(stop|end|exit) voice mode\W*$/i
 
-const LABELS: Record<VoiceStatus, string> = {
-  off: 'off',
-  loading: 'loading Whisper…',
-  listening: 'listening',
-  hearing: 'hearing you…',
-  thinking: 'thinking…',
-  speaking: 'speaking…',
+/** Least ms between two spoken tool summaries. */
+const SUMMARY_MS = 5000
+
+/** The spoken verb of each tool a summary names; file tools add the file's name. */
+const VERBS: Record<string, string> = {
+  Read: 'reading',
+  Edit: 'editing',
+  Write: 'editing',
+  Grep: 'searching the code',
+  Glob: 'searching the code',
+  WebSearch: 'searching the web',
+  WebFetch: 'searching the web',
+  Agent: 'starting a subagent',
+}
+
+/** Each panel look's colour, header state, the dim line beside the meter, and that line while Claude is thinking. */
+const LOOKS: Record<VoiceLook, { color: string; title: string; hint: string; busy?: string }> = {
+  loading: { color: 'gray', title: 'LOADING', hint: 'loading Whisper…' },
+  listening: { color: 'cyan', title: 'LISTENING', hint: 'say something…', busy: 'speak to interrupt' },
+  ready: { color: 'cyan', title: 'READY', hint: 'press Talk', busy: 'press Talk to interrupt' },
+  hearing: { color: 'green', title: 'HEARING', hint: '…' },
+  rec: { color: 'red', title: 'REC', hint: '…' },
+  speaking: { color: 'magenta', title: 'SPEAKING', hint: 'reading the reply' },
+  muted: { color: 'red', title: 'MUTED', hint: 'mic is off' },
 }
 
 const status = atom({ plugin: 'live-voice-mode', key: 'status' } as const, 'off' as VoiceStatus)
+const mode = atom({ plugin: 'live-voice-mode', key: 'mode' } as const, 'tapToTalk' as VoiceMode)
 const muted = atom({ plugin: 'live-voice-mode', key: 'muted' } as const, false)
 const words = atom({ plugin: 'live-voice-mode', key: 'words' } as const, '')
+const levels = atom({ plugin: 'live-voice-mode', key: 'levels' } as const, { mic: 0, out: 0 } as VoiceLevels)
+const verbosity = atom({ plugin: 'live-voice-mode', key: 'verbosity' } as const, 'answer' as VoiceVerbosity)
 
 /** One JSON line the sidecar writes. */
 type SidecarEvent =
@@ -26,12 +46,23 @@ type SidecarEvent =
   | { type: 'partial'; text: string }
   | { type: 'heard'; text: string }
   | { type: 'spoken' }
+  | { type: 'level'; mic: number; out: number }
   | { type: 'log'; text: string }
 
 type Sidecar = HookStream<ProcessSpawnChunk, ProcessSpawnResult>
 
 /** The running sidecar and its HTTP port, both unset while voice mode is off, and the main loop's running turn. */
 const live: { sidecar?: Sidecar; port?: number; turnId?: string } = {}
+
+/** Surfaces where a panel Client failed. */
+const faulted = new Set<string>()
+
+/** Columns the panel's meter takes, and its border and padding. */
+const METER_COLUMNS = 23
+const FRAME_COLUMNS = 4
+
+/** The last `room` characters of `text`, an ellipsis in front when cut. */
+const clip = (text: string, room: number) => (text.length > room ? `…${text.slice(text.length - room + 1)}` : text)
 
 /** A reply as plain speech: code blocks named, markdown marks dropped. */
 const speakable = (text: string) =>
@@ -51,10 +82,60 @@ const post = async ($: EngineInterface, path: string, body = '') => {
   }
 }
 
-/** Submits what was heard as the person's prompt, ending the running turn first. */
+/** The last progress line spoken, and when the last tool summary was. */
+const told = { line: '', at: -Infinity }
+
+/** A tool use as its spoken verb and, for a file tool, the file's name without its extensions. */
+const phrase = ({ name, input }: TurnStepToolUse): [string?, string?] => {
+  const { file_path, description } = (input ?? {}) as { file_path?: string; description?: string }
+  const server = /^mcp__(.+?)__/.exec(name)?.[1]
+
+  return name === 'Bash' ? [description] : server ? [`using ${server.replace(/[_-]+/g, ' ')}`] : [VERBS[name], file_path?.split(/[\\/]/).pop()?.replace(/(?<=.)\..*$/, '')]
+}
+
+/** A step's tool uses as one spoken line: each verb once, with its file, or a count of several files. */
+const summary = (uses: readonly TurnStepToolUse[]) => {
+  const groups = new Map<string, Set<string>>()
+
+  for (const [verb, file] of uses.map(phrase)) {
+    if (verb) {
+      groups.set(verb, (groups.get(verb) ?? new Set()).add(file ?? ''))
+    }
+  }
+
+  return [...groups]
+    .map(([verb, files]) => {
+      const named = [...files].filter(Boolean)
+      return named.length > 1 ? `${verb} ${named.length} files` : [verb, ...named].join(' ')
+    })
+    .join(', ')
+}
+
+/** Speaks a progress line of the main loop's running turn in progress verbosity; a tool summary at most once per SUMMARY_MS. */
+const narrate = async ($: EngineInterface, turnId: string, line: string, isSummary: boolean) => {
+  if (!line || line === told.line || turnId !== live.turnId || live.port === undefined || (await read($, verbosity)) === 'answer' || (await read($, status)) === 'hearing') {
+    return
+  }
+
+  const now = await $.clock.now()
+
+  if (isSummary && now - told.at < SUMMARY_MS) {
+    return
+  }
+
+  told.line = line
+  told.at = isSummary ? now : told.at
+  await post($, '/narrate', line).catch(error => $.ui.log(`Voice narration failed: ${error}`, { to: 'debug' }))
+}
+
+/** Submits what was heard as the person's prompt, ending the reply being spoken and the running turn first. */
 const send = async ($: EngineInterface, text: string) => {
-  if (live.turnId !== undefined) {
-    await $.turn.abort({ turnId: live.turnId }).catch(error => $.ui.log(`Voice turn abort failed: ${error}`, { to: 'debug' }))
+  const turnId = live.turnId
+  live.turnId = undefined
+  await post($, '/stop')
+
+  if (turnId !== undefined) {
+    await $.turn.abort({ turnId }).catch(error => $.ui.log(`Voice turn abort failed: ${error}`, { to: 'debug' }))
   }
 
   const result = await $.prompt.submit({ text, asUser: true })
@@ -64,13 +145,61 @@ const send = async ($: EngineInterface, text: string) => {
   }
 }
 
+/** Posts each path in order, then clears any utterance in progress from the band. */
+const drop = async ($: EngineInterface, paths: string[]) => {
+  for (const path of paths) {
+    await post($, path)
+  }
+  await update($, words, () => '')
+  await update($, status, now => (now === 'hearing' ? 'listening' : now))
+}
+
 /** Turns the sidecar's microphone off or on. */
 const toggleMute = async ($: EngineInterface) => {
   const next = !(await read($, muted))
   await update($, muted, () => next)
-  await post($, next ? '/mute' : '/unmute')
-  await update($, words, () => '')
-  await update($, status, now => (now === 'hearing' ? 'listening' : now))
+  await drop($, [next ? '/mute' : '/unmute'])
+}
+
+/** Switches between hands-free and tap to talk. */
+const toggleMode = async ($: EngineInterface) => {
+  const next: VoiceMode = (await read($, mode)) === 'handsFree' ? 'tapToTalk' : 'handsFree'
+  await update($, mode, () => next)
+  await update($, muted, () => false)
+  await drop($, next === 'tapToTalk' ? ['/mute'] : ['/cancel', '/unmute'])
+}
+
+/** The primary button's label: Mute/Unmute when hands-free, Talk/Send in tap to talk. */
+const primaryLabel = (now: VoiceStatus, isMuted: boolean, tap: boolean) => (tap ? (now === 'hearing' ? 'Send' : 'Talk') : isMuted ? 'Unmute' : 'Mute')
+
+/** The hint line's shortcuts. */
+const shortcuts = (isMuted: boolean, tap: boolean) => `alt+m ${tap ? 'talk/send' : isMuted ? 'unmute' : 'mute'}`
+
+/** What the panel shows for a status; thinking shows the mode's idle look. */
+const lookOf = (now: Exclude<VoiceStatus, 'off'>, isMuted: boolean, tap: boolean): VoiceLook =>
+  now === 'listening' || now === 'thinking' ? (isMuted ? 'muted' : tap ? 'ready' : 'listening') : now === 'hearing' && tap ? 'rec' : now
+
+/** Ends the reply being spoken. */
+const skip = async ($: EngineInterface) => {
+  await post($, '/stop')
+  await update($, status, now => (now === 'speaking' ? 'listening' : now))
+}
+
+/** Switches between speaking only the answer and speaking progress lines too. */
+const toggleVerbosity = ($: EngineInterface) => update($, verbosity, now => (now === 'answer' ? 'progress' : 'answer'))
+
+/** The primary button: Mute/Unmute when hands-free, Talk/Send in tap to talk. */
+const press = async ($: EngineInterface) => {
+  if ((await read($, mode)) === 'handsFree') {
+    return toggleMute($)
+  }
+
+  const recording = (await read($, status)) === 'hearing'
+  if (recording) {
+    await update($, words, () => '')
+  }
+  await setStatus($, recording ? 'thinking' : 'hearing')
+  await post($, recording ? '/send' : '/talk')
 }
 
 /** Ends the sidecar and voice mode. */
@@ -78,8 +207,11 @@ const stop = async ($: EngineInterface) => {
   void live.sidecar?.return(undefined as never)
   live.sidecar = undefined
   live.port = undefined
+  Object.assign(told, { line: '', at: -Infinity })
+  await update($, mode, () => 'tapToTalk')
   await update($, muted, () => false)
   await update($, words, () => '')
+  await update($, levels, () => ({ mic: 0, out: 0 }))
   await setStatus($, 'off')
 }
 
@@ -87,6 +219,9 @@ const handle = async ($: EngineInterface, event: SidecarEvent) => {
   switch (event.type) {
     case 'ready':
       live.port = event.port
+      if (!(await read($, muted)) && (await read($, mode)) === 'handsFree') {
+        await post($, '/unmute')
+      }
       $.ui.toast(`Voice mode on (${event.device}). Say "stop voice mode" to end.`)
       return setStatus($, 'listening')
     case 'speech':
@@ -110,6 +245,8 @@ const handle = async ($: EngineInterface, event: SidecarEvent) => {
       return
     case 'spoken':
       return update($, status, now => (now === 'speaking' ? 'listening' : now))
+    case 'level':
+      return update($, levels, () => ({ mic: event.mic, out: event.out }))
     case 'log':
       return $.ui.log(event.text, { to: 'debug' })
   }
@@ -182,6 +319,35 @@ export const register: Register = on => {
     return next(e)
   })
 
+  on('turn.step', async function* ($, e, next) {
+    if (e.agentId !== undefined) {
+      return yield* next(e)
+    }
+
+    const stream = next(e)
+    let text = ''
+    let spoke = false
+
+    for await (const chunk of stream) {
+      yield chunk
+
+      if (chunk.kind === 'text') {
+        text += chunk.text
+      } else if (chunk.kind === 'tool' && !spoke && speakable(text)) {
+        spoke = true
+        await narrate($, e.turnId, speakable(text), false)
+      }
+    }
+
+    const result = await stream.result
+
+    if (!spoke && result.stopReason === 'tool_use') {
+      await narrate($, e.turnId, speakable(text) || summary(result.toolUses), !speakable(text))
+    }
+
+    return result
+  })
+
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
 
@@ -193,7 +359,7 @@ export const register: Register = on => {
       live.turnId = undefined
     }
 
-    if (live.port === undefined) {
+    if (live.port === undefined || (await read($, status)) === 'hearing') {
       return result
     }
 
@@ -212,25 +378,62 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const now = await read($, status)
     const isMuted = await read($, muted)
+    const tap = (await read($, mode)) === 'tapToTalk'
     const heard = await read($, words)
+    const progress = (await read($, verbosity)) === 'progress'
     const below = await next(e)
 
-    if (now === 'off' || e.props.hasSurvey) {
+    if (now === 'off' || e.props.hasSurvey || (e.surface !== 'terminal' && e.surface !== 'desktop')) {
       return below
     }
 
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const { Box, Button, Client, Text } = $.ui.resolve(e)
+    const look = lookOf(now, isMuted, tap)
+    const { color, title, hint, busy } = LOOKS[look]
+    const animated = !faulted.has(e.surface)
 
     return (
       <Box flexDirection="column">
         {below}
-        <Box flexDirection="row" alignItems="center" columnGap={1}>
-          <Text color="cyan">Voice: {LABELS[now]}{isMuted && ' (mic muted)'}</Text>
-          <Button key="voice-mute" label={isMuted ? 'Unmute' : 'Mute'} hotkey="m" action="app:toggleDiffPreSession" onPress={() => toggleMute($)} />
-          <Button key="voice-end" label="End voice" onPress={() => stop($)} />
+        <Box flexDirection="column" rowGap={1} borderStyle="round" borderColor={color} borderDimColor={look === 'muted'} paddingX={1}>
+          <Box flexDirection="row" justifyContent="space-between">
+            {animated ? <Client key="voice-head" module="./voice-panel.tsx" props={{ part: 'head', look, color, title }} /> : <Text color={color} bold>{title}</Text>}
+            <Text dimColor>{tap ? 'tap to talk' : 'hands-free'}{isMuted && ' · mic off'}</Text>
+          </Box>
+          <Box flexDirection="row" columnGap={2}>
+            {animated && <Client key="voice-meter" module="./voice-panel.tsx" props={{ part: 'meter', look, color, ...(await read($, levels)) }} />}
+            <Text dimColor italic={!!heard}>{clip(heard || (now === 'thinking' && busy) || hint,e.props.bodyColumns - FRAME_COLUMNS - (animated ? METER_COLUMNS + 2 : 0))}</Text>
+          </Box>
+          <Box flexDirection="row" columnGap={1}>
+            <Button key="voice-mute" label={primaryLabel(now, isMuted, tap)} hotkey="m" action="app:toggleDiffPreSession" onPress={() => press($)} />
+            {now === 'speaking' && <Button key="voice-skip" label="Skip" hotkey="s" onPress={() => skip($)} />}
+            <Button key="voice-mode" label={tap ? 'Hands-free' : 'Tap to talk'} onPress={() => toggleMode($)} />
+            <Button key="voice-verbosity" label={progress ? 'Answer only' : 'Progress'} onPress={() => toggleVerbosity($)} />
+            <Button key="voice-end" label="End voice" onPress={() => stop($)} />
+          </Box>
         </Box>
-        {heard && <Text dimColor italic>{heard}</Text>}
       </Box>
     )
+  })
+
+  on('ui.render', { component: 'SessionMode' }, async ($, e, next) =>
+    next((await read($, status)) === 'off' ? e : { ...e, props: { ...e.props, modes: [...e.props.modes, 'voice'] } }),
+  )
+
+  on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
+    if ((await read($, status)) === 'off') {
+      return next(e)
+    }
+
+    const tail = shortcuts(await read($, muted), (await read($, mode)) === 'tapToTalk')
+
+    return next({ ...e, props: { ...e.props, tail: e.props.tail ? `${e.props.tail} · ${tail}` : tail } })
+  })
+
+  on('ui.fault', async ($, e, next) => {
+    faulted.add(e.surface)
+    $.ui.log(`Voice panel failed on ${e.surface} (${e.phase}): ${e.reason}`, { to: 'debug' })
+
+    return next(e)
   })
 }

@@ -1,6 +1,6 @@
 {
   "name": "live-voice-mode",
   "version": "0.1.0",
-  "description": "Always-listening voice mode: local Whisper transcribes you, Windows speech reads replies.",
+  "description": "Voice mode, tap to talk or hands-free: local Whisper transcribes you, Kokoro reads replies.",
   "types": "./types/index.d.ts"
 }

@@ -14,6 +14,9 @@ from .config import (
     END_FRAMES,
     END_PROB,
     FRAME,
+    LEVEL_EVERY,
+    LEVEL_FLOOR,
+    MANUAL_MAX_FRAMES,
     MAX_FRAMES,
     MIN_FRAMES,
     PLAY_RATE,
@@ -26,8 +29,11 @@ from .detector import VoiceDetector
 from .events import emit
 
 
-def listen(transcriber, speaker, words, muted, ready):
-    """Plays the speaker's audio, reads the echo-cancelled microphone forever, and emits each utterance it hears."""
+def listen(transcriber, speaker, words, muted, requests, ready):
+    """Plays the speaker's audio, reads the echo-cancelled microphone forever, and emits each utterance it hears.
+
+    `requests` carries "talk", "send" and "cancel" for a manual recording, which ignores `muted` and silence.
+    """
     from livekit import rtc
 
     apm = rtc.AudioProcessingModule(echo_cancellation=True, high_pass_filter=True)
@@ -41,6 +47,9 @@ def listen(transcriber, speaker, words, muted, ready):
     voiced = []
     loud = 0
     silent = 0
+    manual = False
+    frames = 0
+    level = [0.0, 0.0]
 
     def on_audio(indata, outdata, *_):
         outdata[:, 0] = speaker.pull(CHUNK)
@@ -61,8 +70,25 @@ def listen(transcriber, speaker, words, muted, ready):
                 continue
 
             frame, samples = samples[:FRAME], samples[FRAME:]
+            request = None if requests.empty() else requests.get_nowait()
 
-            if muted.is_set():
+            if request == "talk" and not manual:
+                speaker.stop()
+                emit("speech")
+                manual = True
+            elif request == "cancel" and manual:
+                words.end()
+                voiced, manual = [], False
+
+            frames += 1
+            if frames % LEVEL_EVERY == 0:
+                mic = 0.0 if muted.is_set() and not manual else float(np.sqrt(np.mean(frame**2)))
+                now = [round(value, 3) if value > LEVEL_FLOOR else 0.0 for value in (mic, speaker.level)]
+                if now != level:
+                    level = now
+                    emit("level", mic=level[0], out=level[1])
+
+            if muted.is_set() and not manual:
                 if voiced:
                     words.end()
                 preroll.clear()
@@ -70,31 +96,40 @@ def listen(transcriber, speaker, words, muted, ready):
                 voiced, loud, silent = [], 0, 0
                 continue
 
-            prob = detector(frame)
+            if manual:
+                voiced.append(frame)
+                words.add(frame)
 
-            if not voiced:
-                echo = speaker.is_echo()
-                preroll.append(frame)
-                recent.append(prob > BARGE_PROB)
-                loud = loud + 1 if prob > START_PROB else 0
+                if request != "send" and len(voiced) < MANUAL_MAX_FRAMES:
+                    continue
+            else:
+                prob = detector(frame)
 
-                if sum(recent) >= BARGE_FRAMES if echo else loud >= START_FRAMES:
-                    if echo:
-                        speaker.stop()
-                    voiced = list(preroll)
-                    emit("speech")
-                    for early in voiced:
-                        words.add(early)
-                continue
+                if not voiced:
+                    echo = speaker.is_echo()
+                    preroll.append(frame)
+                    recent.append(prob > BARGE_PROB)
+                    loud = loud + 1 if prob > START_PROB else 0
 
-            voiced.append(frame)
-            words.add(frame)
-            silent = silent + 1 if prob < END_PROB else 0
+                    if sum(recent) >= BARGE_FRAMES if echo else loud >= START_FRAMES:
+                        if echo:
+                            speaker.stop()
+                        voiced = list(preroll)
+                        emit("speech")
+                        for early in voiced:
+                            words.add(early)
+                    continue
 
-            if silent >= END_FRAMES or len(voiced) >= MAX_FRAMES:
-                words.end()
-                text = transcriber.transcribe(np.concatenate(voiced)) if len(voiced) >= MIN_FRAMES else ""
-                emit("heard", text=text)
-                preroll.clear()
-                recent.clear()
-                voiced, loud, silent = [], 0, 0
+                voiced.append(frame)
+                words.add(frame)
+                silent = silent + 1 if prob < END_PROB else 0
+
+                if silent < END_FRAMES and len(voiced) < MAX_FRAMES:
+                    continue
+
+            words.end()
+            text = transcriber.transcribe(np.concatenate(voiced)) if len(voiced) >= MIN_FRAMES else ""
+            emit("heard", text=text)
+            preroll.clear()
+            recent.clear()
+            voiced, loud, silent, manual = [], 0, 0, False

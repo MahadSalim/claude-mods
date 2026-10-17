@@ -15,13 +15,16 @@ class LiveWords:
         self.transcriber = transcriber
         self.frames = queue.Queue()
         self.utterance = 0
+        self.ending = threading.Lock()
         threading.Thread(target=self.run, daemon=True).start()
 
     def add(self, frame):
         self.frames.put((self.utterance, frame))
 
     def end(self):
-        self.utterance += 1
+        """Ends the utterance; no partial for it is emitted once this returns."""
+        with self.ending:
+            self.utterance += 1
         self.frames.put((self.utterance, None))
 
     def take(self):
@@ -43,5 +46,6 @@ class LiveWords:
 
             if audio:
                 text = self.transcriber.partial(np.concatenate(audio))
-                if utterance == self.utterance:
-                    emit("partial", text=text)
+                with self.ending:
+                    if utterance == self.utterance:
+                        emit("partial", text=text)

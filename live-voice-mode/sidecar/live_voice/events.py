@@ -1,4 +1,4 @@
-"""JSON event lines on stdout: ready, speech, partial, heard, spoken, log."""
+"""JSON event lines on stdout: ready, speech, partial, heard, spoken, level, log."""
 
 import json
 import threading
