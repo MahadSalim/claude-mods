@@ -1,0 +1,7 @@
+faster-whisper==1.2.1
+kokoro-onnx==0.6.1
+livekit==1.1.21
+numpy==2.5.4
+sounddevice==0.5.6
+nvidia-cublas-cu12==12.9.2.10
+nvidia-cudnn-cu12==9.27.0.42

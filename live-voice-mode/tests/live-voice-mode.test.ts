@@ -87,6 +87,35 @@ test('the band mutes the microphone', async ($, on) => {
   await muted.unmount()
 })
 
+test('the band shows the words heard so far and clears them once sent', async ($, on) => {
+  let open = () => {}
+  const gate = new Promise<void>(resolve => (open = resolve))
+  world(
+    on,
+    [
+      line({ type: 'ready', port: 4321, device: 'cuda' }),
+      line({ type: 'speech' }) + line({ type: 'partial', text: 'list the fi' }),
+      line({ type: 'heard', text: 'list the files' }),
+    ],
+    gate,
+  )
+  const shows = async (text: RegExp) => {
+    const band = await $.ui.mount(BAND)
+    const found = await band.find({ type: 'Text', text })
+    await band.unmount()
+
+    return found !== undefined
+  }
+
+  await $.command.run({ command: 'live-voice', args: '' } as never)
+  await settle()
+  expect(await shows(/list the fi/)).toBe(true)
+
+  open()
+  await settle()
+  expect(await shows(/list the fi/)).toBe(false)
+})
+
 test('speaking during a running turn ends that turn before submitting', async ($, on) => {
   let open = () => {}
   const gate = new Promise<void>(resolve => (open = resolve))

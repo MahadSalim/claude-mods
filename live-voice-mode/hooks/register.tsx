@@ -4,8 +4,6 @@ import type { EngineInterface, HookStream, ProcessSpawnChunk, ProcessSpawnResult
 import type { VoiceStatus } from '../types'
 
 const PYTHON = 'C:/Users/Mahad/.cache/live-voice-mode/venv/Scripts/python.exe'
-const MODEL = 'C:/Users/Mahad/models/whisper-large-v3-turbo'
-const KOKORO = 'C:/Users/Mahad/models/kokoro'
 const STOP_PHRASE = /^\W*(stop|end|exit) voice mode\W*$/i
 
 const LABELS: Record<VoiceStatus, string> = {
@@ -19,11 +17,13 @@ const LABELS: Record<VoiceStatus, string> = {
 
 const status = atom({ plugin: 'live-voice-mode', key: 'status' } as const, 'off' as VoiceStatus)
 const muted = atom({ plugin: 'live-voice-mode', key: 'muted' } as const, false)
+const words = atom({ plugin: 'live-voice-mode', key: 'words' } as const, '')
 
 /** One JSON line the sidecar writes. */
 type SidecarEvent =
   | { type: 'ready'; port: number; device: string }
   | { type: 'speech' }
+  | { type: 'partial'; text: string }
   | { type: 'heard'; text: string }
   | { type: 'spoken' }
   | { type: 'log'; text: string }
@@ -69,6 +69,7 @@ const toggleMute = async ($: EngineInterface) => {
   const next = !(await read($, muted))
   await update($, muted, () => next)
   await post($, next ? '/mute' : '/unmute')
+  await update($, words, () => '')
   await update($, status, now => (now === 'hearing' ? 'listening' : now))
 }
 
@@ -78,6 +79,7 @@ const stop = async ($: EngineInterface) => {
   live.sidecar = undefined
   live.port = undefined
   await update($, muted, () => false)
+  await update($, words, () => '')
   await setStatus($, 'off')
 }
 
@@ -88,8 +90,15 @@ const handle = async ($: EngineInterface, event: SidecarEvent) => {
       $.ui.toast(`Voice mode on (${event.device}). Say "stop voice mode" to end.`)
       return setStatus($, 'listening')
     case 'speech':
+      await update($, words, () => '')
       return setStatus($, 'hearing')
+    case 'partial':
+      if ((await read($, status)) === 'hearing') {
+        await update($, words, () => event.text)
+      }
+      return
     case 'heard':
+      await update($, words, () => '')
       if (STOP_PHRASE.test(event.text)) {
         return stop($)
       }
@@ -135,7 +144,9 @@ const pump = async ($: EngineInterface, sidecar: Sidecar) => {
 
 const start = async ($: EngineInterface) => {
   await setStatus($, 'loading')
-  live.sidecar = $.process.spawn({ argv: [PYTHON, '-u', `${$.plugin.root}/sidecar/voice.py`, '--model', MODEL, '--kokoro', KOKORO] })
+  live.sidecar = $.process.spawn({
+    argv: [PYTHON, '-u', `${$.plugin.root}/sidecar/voice.py`],
+  })
   void pump($, live.sidecar)
 }
 
@@ -201,6 +212,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const now = await read($, status)
     const isMuted = await read($, muted)
+    const heard = await read($, words)
     const below = await next(e)
 
     if (now === 'off' || e.props.hasSurvey) {
@@ -217,6 +229,7 @@ export const register: Register = on => {
           <Button key="voice-mute" label={isMuted ? 'Unmute' : 'Mute'} hotkey="m" action="app:toggleDiffPreSession" onPress={() => toggleMute($)} />
           <Button key="voice-end" label="End voice" onPress={() => stop($)} />
         </Box>
+        {heard && <Text dimColor italic>{heard}</Text>}
       </Box>
     )
   })

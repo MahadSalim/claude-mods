@@ -2,6 +2,6 @@ export type VoiceStatus = 'off' | 'loading' | 'listening' | 'hearing' | 'thinkin
 
 declare module 'claude-code' {
   interface PluginState {
-    'live-voice-mode': { status: VoiceStatus; muted: boolean }
+    'live-voice-mode': { status: VoiceStatus; muted: boolean; words: string }
   }
 }
