@@ -1,13 +1,8 @@
 {
   "name": "claude-mods",
-  "description": "Mods for Claude Code: agent delegation, prompt tools, turn rules, a context bar and a settings UI.",
+  "description": "Mods for Claude Code: a usage log.",
   "owner": { "name": "MahadSalim" },
   "plugins": [
-    { "name": "agent-delegation", "source": "./agent-delegation" },
-    { "name": "prompt-tools", "source": "./prompt-tools" },
-    { "name": "turn-rules", "source": "./turn-rules" },
-    { "name": "context-bar", "source": "./context-bar" },
-    { "name": "ui-mod", "source": "./ui-mod" },
     { "name": "usage-log", "source": "./usage-log" }
   ]
 }
