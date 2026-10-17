@@ -18,6 +18,7 @@ const LABELS: Record<VoiceStatus, string> = {
 }
 
 const status = atom({ plugin: 'live-voice-mode', key: 'status' } as const, 'off' as VoiceStatus)
+const muted = atom({ plugin: 'live-voice-mode', key: 'muted' } as const, false)
 
 /** One JSON line the sidecar writes. */
 type SidecarEvent =
@@ -63,11 +64,20 @@ const send = async ($: EngineInterface, text: string) => {
   }
 }
 
+/** Turns the sidecar's microphone off or on. */
+const toggleMute = async ($: EngineInterface) => {
+  const next = !(await read($, muted))
+  await update($, muted, () => next)
+  await post($, next ? '/mute' : '/unmute')
+  await update($, status, now => (now === 'hearing' ? 'listening' : now))
+}
+
 /** Ends the sidecar and voice mode. */
 const stop = async ($: EngineInterface) => {
   void live.sidecar?.return(undefined as never)
   live.sidecar = undefined
   live.port = undefined
+  await update($, muted, () => false)
   await setStatus($, 'off')
 }
 
@@ -190,6 +200,7 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const now = await read($, status)
+    const isMuted = await read($, muted)
     const below = await next(e)
 
     if (now === 'off' || e.props.hasSurvey) {
@@ -202,8 +213,8 @@ export const register: Register = on => {
       <Box flexDirection="column">
         {below}
         <Box flexDirection="row" alignItems="center" columnGap={1}>
-          <Text color="cyan">Voice: {LABELS[now]}</Text>
-          {now === 'speaking' && <Button key="voice-skip" label="Skip" onPress={() => post($, '/stop')} />}
+          <Text color="cyan">Voice: {LABELS[now]}{isMuted && ' (mic muted)'}</Text>
+          <Button key="voice-mute" label={isMuted ? 'Unmute' : 'Mute'} hotkey="m" action="app:toggleDiffPreSession" onPress={() => toggleMute($)} />
           <Button key="voice-end" label="End voice" onPress={() => stop($)} />
         </Box>
       </Box>

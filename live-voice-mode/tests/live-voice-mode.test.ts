@@ -72,6 +72,21 @@ test('voice mode submits what it hears, speaks the reply, and ends on the stop p
   expect(await shows(/Voice/)).toBe(false)
 })
 
+test('the band mutes the microphone', async ($, on) => {
+  const { spoken } = world(on, [line({ type: 'ready', port: 4321, device: 'cuda' }), line({ type: 'log', text: 'end' })], new Promise<void>(() => {}))
+
+  await $.command.run({ command: 'live-voice', args: '' } as never)
+  await settle()
+  const band = await $.ui.mount(BAND)
+  await band.press({ key: 'voice-mute' })
+  await band.unmount()
+  expect(spoken).toEqual(['http://127.0.0.1:4321/mute '])
+
+  const muted = await $.ui.mount(BAND)
+  expect(await muted.find({ type: 'Text', text: /mic muted/ })).not.toBe(undefined)
+  await muted.unmount()
+})
+
 test('speaking during a running turn ends that turn before submitting', async ($, on) => {
   let open = () => {}
   const gate = new Promise<void>(resolve => (open = resolve))
