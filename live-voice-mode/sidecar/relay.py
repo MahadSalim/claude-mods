@@ -9,9 +9,9 @@ import socket
 import sys
 import time
 
-from live_voice.config import ENGINE_STATE, START_SECONDS
+from live_voice.config import ENGINE_LOCK, ENGINE_STATE, START_SECONDS
 from live_voice.events import emit
-from live_voice.launch import start
+from live_voice.launch import free, start
 from live_voice.server import MARK
 
 ENGINE = [os.path.join(os.path.dirname(sys.executable), "pythonw.exe"), os.path.join(os.path.dirname(os.path.abspath(__file__)), "engine.py")]
@@ -39,18 +39,20 @@ def attach():
 
 
 def connect():
-    """Attaches to the engine, starting one when none answers and waiting up to START_SECONDS for it."""
-    lines = attach()
-
-    if lines is None:
-        emit("log", text=f"Voice engine started ({start(ENGINE)})")
-
+    """Attaches to the engine holding ENGINE_LOCK, starting one once while no engine holds it, and waits up to START_SECONDS for it to answer."""
     deadline = time.monotonic() + START_SECONDS
-    while lines is None and time.monotonic() < deadline:
-        time.sleep(0.25)
-        lines = attach()
+    started = False
 
-    return lines
+    while time.monotonic() < deadline:
+        if not free(ENGINE_LOCK):
+            if lines := attach():
+                return lines
+        elif not started:
+            started = True
+            emit("log", text=f"Voice engine started ({start(ENGINE)})")
+        time.sleep(0.25)
+
+    return None
 
 
 def main():

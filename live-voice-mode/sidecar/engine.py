@@ -5,9 +5,9 @@ POST /speak and /narrate queue the session's speech; /stop ends all speech; /unm
 The microphone stream is open while any session is connected. The tray's Quit, or a failure loading the models or running the audio, ends the engine, sending each session `end`; Restart starts a new engine and exits.
 """
 
+import contextlib
 import itertools
 import json
-import msvcrt
 import os
 import queue
 import sys
@@ -17,25 +17,10 @@ import traceback
 
 from live_voice import events
 from live_voice.config import ENGINE_LOCK, ENGINE_LOG, ENGINE_STATE, KOKORO, LOCK_SECONDS, WHISPER
-from live_voice.launch import start
+from live_voice.launch import hold, start
 from live_voice.server import serve
 
 COLORS = {"loading": "gray", "ready": "darkcyan", "listening": "limegreen", "speaking": "magenta"}
-
-
-def hold(path, seconds):
-    """Locks `path` for this process's life, waiting up to `seconds`; False when another engine holds it."""
-    handle = os.open(path, os.O_RDWR | os.O_CREAT)
-    deadline = time.monotonic() + seconds
-
-    while True:
-        try:
-            msvcrt.locking(handle, msvcrt.LK_NBLCK, 1)
-            return True
-        except OSError:
-            if time.monotonic() > deadline:
-                return False
-            time.sleep(0.2)
 
 
 class Engine:
@@ -234,7 +219,7 @@ def tray(engine):
 def main():
     sys.stderr = open(ENGINE_LOG, "a", buffering=1)
 
-    if not hold(ENGINE_LOCK, LOCK_SECONDS):
+    if hold(ENGINE_LOCK, LOCK_SECONDS) is None:
         return
 
     engine = Engine()
@@ -246,7 +231,11 @@ def main():
 
     threading.Thread(target=engine.run, daemon=True).start()
 
-    if tray(engine) == "restart":
+    ending = tray(engine)
+    with contextlib.suppress(OSError):
+        os.remove(ENGINE_STATE)
+
+    if ending == "restart":
         start([sys.executable, os.path.abspath(__file__)])
     else:
         engine.end("Voice engine quit; voice mode off.")

@@ -18,8 +18,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import numpy as np
 
 import relay
-from engine import Engine, hold
+from engine import Engine
 from live_voice import events
+from live_voice.launch import free, hold
 from live_voice.server import serve
 
 
@@ -40,13 +41,15 @@ class FakeSpeaker:
 
 
 def fresh():
-    """Points the relay at a new, empty state file folder."""
-    relay.ENGINE_STATE = os.path.join(tempfile.mkdtemp(), "engine.json")
+    """Points the relay at a new, empty folder for the state and lock files."""
+    folder = tempfile.mkdtemp()
+    relay.ENGINE_STATE, relay.ENGINE_LOCK = os.path.join(folder, "engine.json"), os.path.join(folder, "engine.lock")
 
 
 def started():
-    """An engine with fake models loaded, its server up and its port in the state file, and the handlers of its event streams."""
+    """An engine with fake models loaded, holding the lock, its server up and its port in the state file, and the handlers of its event streams."""
     engine = Engine()
+    engine.handle = hold(relay.ENGINE_LOCK, 0)
     engine.speaker, engine.device = FakeSpeaker(), "cpu"
     handlers = []
     engine.port = serve(engine.routes, lambda handler: (handlers.append(handler), engine.join(handler)))
@@ -137,17 +140,20 @@ class SingleInstance(unittest.TestCase):
     def test_one_engine_holds_the_lock_and_a_dead_ones_is_free(self):
         path = os.path.join(tempfile.mkdtemp(), "engine.lock")
         sidecar = os.path.dirname(relay.__file__)
-        subprocess.run([sys.executable, "-c", f"import sys; sys.path.insert(0, {sidecar!r}); from engine import hold; assert hold({path!r}, 0)"], check=True)
+        subprocess.run([sys.executable, "-c", f"import sys; sys.path.insert(0, {sidecar!r}); from live_voice.launch import hold; assert hold({path!r}, 0) is not None"], check=True)
 
-        self.assertTrue(hold(path, 0))
-        self.assertFalse(hold(path, 0.3))
+        self.assertTrue(free(path))
+        self.assertIsNotNone(hold(path, 0))
+        self.assertFalse(free(path))
+        self.assertIsNone(hold(path, 0.3))
 
 
 class Relay(unittest.TestCase):
     def setUp(self):
         fresh()
-        self.seen = []
+        self.seen, self.launched = [], []
         events.route = self.seen.append
+        relay.start = lambda argv: self.launched.append(argv) or "popen"
 
     def tearDown(self):
         events.route = None
@@ -155,16 +161,14 @@ class Relay(unittest.TestCase):
     def kinds(self):
         return [event["type"] for event in self.seen]
 
-    def test_a_stale_state_file_starts_an_engine(self):
+    def test_a_stale_state_file_starts_one_engine(self):
         with open(relay.ENGINE_STATE, "w") as file:
             json.dump({"port": 1, "pid": 0}, file)
-        launched = []
-        relay.start = lambda argv: (launched.append(argv), threading.Thread(target=started).start(), "popen")[-1]
+        relay.start = lambda argv: self.launched.append(argv) or threading.Timer(0.5, started).start() or "popen"
 
         lines = relay.connect()
         self.assertEqual(json.loads(lines.readline())["type"], "ready")
-        self.assertEqual([os.path.basename(path) for path in launched[0]], ["pythonw.exe", "engine.py"])
-        self.assertEqual(len(launched), 1)
+        self.assertEqual([[os.path.basename(path) for path in argv] for argv in self.launched], [["pythonw.exe", "engine.py"]])
         lines.close()
 
     def test_another_program_on_the_state_files_port_is_not_the_engine(self):
@@ -186,15 +190,16 @@ class Relay(unittest.TestCase):
         server.server_close()
 
     def test_the_relay_reconnects_after_a_restart_and_ends_when_the_engine_quits(self):
-        _, old = started()
-        relay.start = lambda argv: "popen"
+        first, old = started()
         thread = threading.Thread(target=relay.main, daemon=True)
         thread.start()
         self.assertTrue(settle(lambda: self.kinds() == ["ready"]))
 
+        os.close(first.handle)
         engine, _ = started()
         old[0].connection.shutdown(socket.SHUT_RDWR)
         self.assertTrue(settle(lambda: self.kinds() == ["ready", "loading", "ready"]))
+        self.assertEqual(self.launched, [])
 
         engine.end("Voice engine quit; voice mode off.")
         thread.join(3)
