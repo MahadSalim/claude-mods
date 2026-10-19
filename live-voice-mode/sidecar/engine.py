@@ -12,7 +12,6 @@ import os
 import queue
 import sys
 import threading
-import time
 import traceback
 
 from live_voice import events
@@ -21,6 +20,22 @@ from live_voice.launch import hold, start
 from live_voice.server import serve
 
 COLORS = {"loading": "gray", "ready": "darkcyan", "listening": "limegreen", "speaking": "magenta"}
+
+
+class Flag(threading.Event):
+    """An Event that sets `changed` whenever it is set or cleared."""
+
+    def __init__(self, changed):
+        super().__init__()
+        self.changed = changed
+
+    def set(self):
+        super().set()
+        self.changed.set()
+
+    def clear(self):
+        super().clear()
+        self.changed.set()
 
 
 class Engine:
@@ -39,6 +54,7 @@ class Engine:
         self.device = None
         self.port = None
         self.ending = None
+        self.changed = threading.Event()
         self.routes = {
             "/speak": lambda client, body: self.speaker.say(body, client),
             "/narrate": lambda client, body: self.speaker.narrate(body, client),
@@ -49,6 +65,13 @@ class Engine:
             "/cancel": lambda client, body: self.release(client, True),
             "/send": lambda client, body: self.owner == client and self.requests.put("send"),
         }
+
+    @contextlib.contextmanager
+    def changing(self):
+        """Holds the lock for a change to the sessions, then sets `changed`."""
+        with self.lock:
+            yield
+        self.changed.set()
 
     def tell(self, to, kind, **fields):
         """Sends one event to session `to`, if it is still connected."""
@@ -73,11 +96,12 @@ class Engine:
         else:
             self.tell(self.owner, kind, **fields)
             if kind == "heard" and self.muted.is_set():
-                self.owner = None
+                with self.changing():
+                    self.owner = None
 
     def take(self, client):
         """Gives the microphone to `client`, telling the session that had it and dropping that session's recording."""
-        with self.lock:
+        with self.changing():
             if self.owner not in (None, client):
                 self.tell(self.owner, "taken")
                 self.muted.set()
@@ -86,7 +110,7 @@ class Engine:
 
     def release(self, client, recording):
         """Frees the microphone when `client` holds it: ends hands-free, or with `recording` drops its recording."""
-        with self.lock:
+        with self.changing():
             if self.owner == client and recording == self.muted.is_set():
                 self.muted.set()
                 self.requests.put("cancel")
@@ -112,7 +136,7 @@ class Engine:
                 except OSError:
                     pass
 
-        with self.lock:
+        with self.changing():
             self.clients[client] = write
             self.present.set()
             if self.speaker:
@@ -127,7 +151,7 @@ class Engine:
 
     def leave(self, client):
         """Forgets a disconnected session, freeing the microphone and stopping its speech; the last one closes the microphone."""
-        with self.lock:
+        with self.changing():
             del self.clients[client]
             if self.owner == client:
                 self.muted.set()
@@ -161,7 +185,8 @@ class Engine:
             words = LiveWords(transcriber)
             detector = VoiceDetector()
 
-            with self.lock:
+            with self.changing():
+                speaker.busy = Flag(self.changed)
                 self.device = transcriber.device
                 self.speaker = speaker
                 for client in self.clients:
@@ -178,6 +203,7 @@ class Engine:
     def finish(self, ending):
         """Ends the engine: `ending` is restart, quit or failed."""
         self.ending = ending
+        self.changed.set()
 
 
 def tray(engine):
@@ -203,7 +229,8 @@ def tray(engine):
                 icon.title = shown
                 icon.icon = picture(COLORS[engine.status()])
                 icon.update_menu()
-            time.sleep(0.5)
+            engine.changed.wait()
+            engine.changed.clear()
         icon.stop()
 
     menu = pystray.Menu(

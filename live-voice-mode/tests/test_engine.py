@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import numpy as np
 
 import relay
-from engine import Engine
+from engine import Engine, Flag
 from live_voice import events
 from live_voice.launch import free, hold
 from live_voice.server import serve
@@ -137,6 +137,32 @@ class Routing(unittest.TestCase):
         post(engine, second, "/talk")
         self.assertEqual(engine.owner, second)
         a.close(), b.close()
+
+
+class Tray(unittest.TestCase):
+    def setUp(self):
+        fresh()
+
+    def test_each_change_the_tray_shows_wakes_it(self):
+        engine, _ = started()
+        busy = engine.speaker.busy = Flag(engine.changed)
+
+        def wakes(change):
+            engine.changed.clear()
+            change()
+            return settle(engine.changed.is_set)
+
+        session = []
+        self.assertTrue(wakes(lambda: session.append(joined())))
+        lines, client = session[0]
+        self.assertTrue(wakes(lambda: post(engine, client, "/unmute")))
+        self.assertEqual(engine.status(), "listening")
+        self.assertTrue(wakes(busy.set))
+        self.assertEqual(engine.status(), "speaking")
+        self.assertTrue(wakes(busy.clear))
+        self.assertTrue(wakes(lines.close))
+        self.assertEqual(engine.status(), "ready")
+        self.assertTrue(wakes(lambda: engine.finish("quit")))
 
 
 class Failure(unittest.TestCase):
