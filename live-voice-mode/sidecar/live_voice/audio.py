@@ -74,9 +74,8 @@ class Segmenter:
             self.speaker.stop()
             emit("speech")
             self.manual = True
-        elif request == "cancel" and self.manual:
-            self.words.end()
-            self.voiced, self.manual = [], False
+        elif request == "cancel":
+            self.drop()
 
         self.meter(frame)
 

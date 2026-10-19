@@ -89,6 +89,14 @@ class Segmenting(unittest.TestCase):
         self.feed(0.0, 1, "send")
         self.assertEqual(self.seen[-1], {"type": "heard", "text": ""})
 
+    def test_cancel_drops_a_hands_free_utterance_and_starts_afresh(self):
+        self.feed(0.9, 30)
+        self.feed(0.9, 1, "cancel")
+        self.assertEqual(self.fake.ends, 1)
+        self.feed(0.9, START_FRAMES - 2)
+        self.feed(0.0, END_FRAMES)
+        self.assertEqual(self.seen, [{"type": "speech"}])
+
     def test_barge_in_stops_the_speaker(self):
         self.fake.echo = True
         self.feed(0.9, 5)
