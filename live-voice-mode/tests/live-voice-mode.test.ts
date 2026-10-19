@@ -616,7 +616,7 @@ test('a session whose microphone another session took goes back to tap to talk',
 
   await taken.open()
   expect(await shows()).toEqual(['Talk', 'READY', 'tap to talk'])
-  expect(toasts.at(-1)).toBe('Another session took the microphone.')
+  expect(toasts.at(-1)).toBe('Another session took the microphone. Press Talk to take it back.')
   await band.unmount()
   await closing.open()
 })

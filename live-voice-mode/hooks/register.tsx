@@ -289,7 +289,7 @@ const handle = async ($: EngineInterface, event: SidecarEvent) => {
       await update($, words, () => '')
       return setStatus($, 'loading')
     case 'taken':
-      $.ui.toast('Another session took the microphone.')
+      $.ui.toast('Another session took the microphone. Press Talk to take it back.')
       await update($, mode, () => 'tapToTalk')
       await update($, muted, () => false)
       return drop($, [])
