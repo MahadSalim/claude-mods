@@ -12,6 +12,7 @@ Voice mode for Claude Code, tap to talk or hands-free. `/live-voice` turns it on
 | `types/index.d.ts` | `VoiceStatus`, `VoiceMode`, `VoiceVerbosity`, `VoiceLook`, `VoiceLevels` and the mod's state keys: `status`, `mode`, `muted`, `words`, `levels`, `verbosity`. |
 | `tests/live-voice-mode.test.ts` | Mod tests against a fake relay. |
 | `tests/test_live_words.py` | `LiveWords`: no partial after an utterance ends, when the words read as finished, with a fake transcriber. |
+| `tests/test_transcriber.py` | `Transcriber`: CPU fallback, silent segments, hotword-only readings, with a fake faster-whisper. |
 | `tests/test_audio.py` | `Segmenter`: hands-free utterances, mute, manual recordings, barge-in, with fakes. |
 | `tests/test_speaker.py` | Speaker queueing, per-session stops, gapless playback and per-session `spoken`, with a fake Kokoro. |
 | `tests/test_engine.py` | Engine routing, the single-instance lock, the relay and per-session `spoken`, with fakes: no models, no audio. |
@@ -21,7 +22,7 @@ Voice mode for Claude Code, tap to talk or hands-free. `/live-voice` turns it on
 | `sidecar/live_voice/events.py` | `emit`: one event, handed to `route` when set (the engine's router) or written as one JSON line on stdout (the relay). |
 | `sidecar/live_voice/launch.py` | `start`: a process detached, windowless and out of every job object, or through WMI `Win32_Process.Create` when it stays in one. |
 | `sidecar/live_voice/detector.py` | `VoiceDetector`: Silero VAD, speech probability per frame. |
-| `sidecar/live_voice/transcriber.py` | `Transcriber`: faster-whisper, final text of an utterance and quick partial passes, one pass at a time, both with `HOTWORDS`. |
+| `sidecar/live_voice/transcriber.py` | `Transcriber`: faster-whisper, final text of an utterance and quick partial passes, one pass at a time, both with `HOTWORDS`; a reading of only hotwords (`Claude.`) is no text. |
 | `sidecar/live_voice/live_words.py` | `LiveWords`: back-to-back Whisper partial passes over the utterance so far, partial words while speaking. |
 | `sidecar/live_voice/speaker.py` | `Speaker`: Kokoro TTS into the playback buffer, answers (`say`) and transient progress lines (`narrate`), each of a session; `client` is the session whose line is playing, `level` the RMS of the last chunk played. |
 | `sidecar/live_voice/audio.py` | `listen`: 48 kHz WASAPI duplex stream on the default devices as they are when it opens, while any session is connected, left after `STALL_SECONDS` with no audio so the engine reopens it; WebRTC echo cancellation; `Segmenter`: utterance segmentation, manual recordings, barge-in, `level` events. |

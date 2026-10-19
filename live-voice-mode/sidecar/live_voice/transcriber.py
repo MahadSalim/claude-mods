@@ -2,6 +2,7 @@
 
 import glob
 import os
+import re
 import sys
 import threading
 
@@ -9,6 +10,8 @@ import numpy as np
 
 from .config import HOTWORDS, RATE
 from .events import emit
+
+ONLY_HOTWORDS = re.compile(rf"\W*(?:(?:{HOTWORDS.replace(', ', '|')})\W*)+", re.IGNORECASE)
 
 
 def add_cuda_paths():
@@ -37,10 +40,11 @@ class Transcriber:
         self.lock = threading.Lock()
 
     def read(self, audio, **options):
-        """Returns the text Whisper hears in the audio with `options`, without segments it judges silent, one pass at a time."""
+        """Returns the text Whisper hears in the audio with `options`, without segments it judges silent, one pass at a time; nothing when it hears only HOTWORDS."""
         with self.lock:
             segments, _ = self.model.transcribe(audio, language="en", condition_on_previous_text=False, hotwords=HOTWORDS, **options)
-            return " ".join(s.text.strip() for s in segments if s.no_speech_prob < 0.6).strip()
+            text = " ".join(s.text.strip() for s in segments if s.no_speech_prob < 0.6).strip()
+        return "" if ONLY_HOTWORDS.fullmatch(text) else text
 
     def transcribe(self, audio):
         """Returns the final text of the audio."""
