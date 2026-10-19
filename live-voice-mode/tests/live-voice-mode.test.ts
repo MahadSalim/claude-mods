@@ -523,6 +523,7 @@ test('Skip ends the rest of a streaming reply', { timeoutMs: 30000 }, async ($, 
 
   await step(['Sure, here it is.'], [])
   await band.press({ key: 'voice-skip' })
+  expect([await head(band), (await panel(band)).hint]).toEqual(['READY', 'press Talk to interrupt'])
   await answered($, 'Sure, here it is.')
   expect(bodies(spoken, '/speak')).toEqual(['Sure,'])
   expect(await head(band)).toBe('READY')

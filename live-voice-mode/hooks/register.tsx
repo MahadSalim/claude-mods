@@ -86,6 +86,9 @@ const cut = (text: string, first: boolean) =>
 
 const setStatus = ($: EngineInterface, next: VoiceStatus) => update($, status, () => next)
 
+/** The status between utterances: thinking while the main loop's turn runs, else listening. */
+const idle = (): VoiceStatus => (live.turnId === undefined ? 'listening' : 'thinking')
+
 /** Sets the status to `next` while it is speaking. */
 const quiet = ($: EngineInterface, next: VoiceStatus) => update($, status, now => (now === 'speaking' ? next : now))
 
@@ -184,7 +187,7 @@ const drop = async ($: EngineInterface, paths: string[]) => {
     await post($, path)
   }
   await update($, words, () => '')
-  await update($, status, now => (now === 'hearing' ? 'listening' : now))
+  await update($, status, now => (now === 'hearing' ? idle() : now))
 }
 
 /** Turns the sidecar's microphone off or on. */
@@ -212,11 +215,11 @@ const shortcuts = (isMuted: boolean, tap: boolean) => `alt+m ${tap ? 'talk/send'
 const lookOf = (now: Exclude<VoiceStatus, 'off'>, isMuted: boolean, tap: boolean): VoiceLook =>
   now === 'listening' || now === 'thinking' ? (isMuted ? 'muted' : tap ? 'ready' : 'listening') : now === 'hearing' && tap ? 'rec' : now
 
-/** Ends the reply being spoken and the rest of its step's speech, the status going from speaking to `next`. */
-const skip = async ($: EngineInterface, next: VoiceStatus = 'listening') => {
+/** Ends the reply being spoken and the rest of its step's speech, the status going from speaking to idle. */
+const skip = async ($: EngineInterface) => {
   said.ended = true
   await post($, '/stop')
-  await quiet($, next)
+  await quiet($, idle())
 }
 
 /** Switches between speaking only the answer and speaking progress lines too. */
@@ -261,7 +264,7 @@ const handle = async ($: EngineInterface, event: SidecarEvent) => {
       if (!(await read($, muted)) && (await read($, mode)) === 'handsFree') {
         await post($, '/unmute')
       }
-      return setStatus($, 'listening')
+      return setStatus($, idle())
     case 'loading':
       live.port = undefined
       return setStatus($, 'loading')
@@ -287,7 +290,7 @@ const handle = async ($: EngineInterface, event: SidecarEvent) => {
         return stop($)
       }
       if (!event.text) {
-        return setStatus($, 'listening')
+        return setStatus($, idle())
       }
       await setStatus($, 'thinking')
       void send($, event.text)
@@ -389,7 +392,7 @@ export const register: Register = on => {
         if (!said.sent) {
           await narrate($, e.turnId, speakable(said.text), false)
         } else if ((await read($, verbosity)) === 'answer') {
-          await skip($, 'thinking').catch(error => $.ui.log(`Voice stop failed: ${error}`, { to: 'debug' }))
+          await skip($).catch(error => $.ui.log(`Voice stop failed: ${error}`, { to: 'debug' }))
         } else {
           await utter($, e.turnId, said.text.length - said.sent)
           await quiet($, 'thinking')
@@ -429,7 +432,7 @@ export const register: Register = on => {
       await setStatus($, 'speaking')
       await post($, '/speak', text)
     } else {
-      await setStatus($, 'listening')
+      await setStatus($, idle())
     }
 
     return result
