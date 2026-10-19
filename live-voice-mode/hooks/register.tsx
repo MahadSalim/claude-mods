@@ -48,14 +48,14 @@ type SidecarEvent =
   | { type: 'speech' }
   | { type: 'partial'; text: string }
   | { type: 'heard'; text: string }
-  | { type: 'spoken' }
+  | { type: 'spoken'; lines?: number }
   | { type: 'level'; mic: number; out: number }
   | { type: 'log'; text: string }
 
 type Sidecar = HookStream<ProcessSpawnChunk, ProcessSpawnResult>
 
-/** The running relay, the engine's HTTP port and this session's client id there, all unset while voice mode is off, and the main loop's running turn. */
-const live: { sidecar?: Sidecar; port?: number; client?: string; turnId?: string } = {}
+/** The running relay, the engine's HTTP port and this session's client id there, all unset while voice mode is off, the /speak lines posted as that client, and the main loop's running turn. */
+const live: { sidecar?: Sidecar; port?: number; client?: string; lines: number; turnId?: string } = { lines: 0 }
 
 /** Surfaces where a panel Client failed. */
 const faulted = new Set<string>()
@@ -67,24 +67,36 @@ const FRAME_COLUMNS = 4
 /** The last `room` characters of `text`, an ellipsis in front when cut. */
 const clip = (text: string, room: number) => (text.length > room ? `…${text.slice(text.length - room + 1)}` : text)
 
-/** A reply as plain speech: code blocks and markdown marks dropped. */
+/** Inline code that reads as a path, a flag or an expression rather than words. */
+const CODE = /[\\/.()[\]{}<>=$;|&~]|(^|\s)-/
+
+/** A reply as plain speech: code blocks, inline code matching CODE and markdown marks dropped. */
 const speakable = (text: string) =>
   text
     .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`\n]*)`/g, (_, code: string) => (CODE.test(code) ? ' ' : code))
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/[`*_#>|]/g, '')
     .replace(/\s+/g, ' ')
+    .replace(/ (?=[,.!?:;])/g, '')
     .trim()
 
-/** A sentence or line end, and for a step's first phrase also a comma or its first eight words. */
+/** A sentence or line end, and for a step's first phrase in progress verbosity also a comma or its first eight words. */
 const SENTENCE_END = /[.!?]\s|\n/g
 const PAUSE = /[,.!?]\s|\n|^(\S+\s+){8}/g
 
-/** How much of `text` makes whole phrases: up to its last pause outside a code block, 0 when none. */
-const cut = (text: string, first: boolean) =>
-  Math.max(0, ...[...text.matchAll(first ? PAUSE : SENTENCE_END)].map(match => match.index + match[0].length).filter(end => text.slice(0, end).split('```').length % 2))
+/** How much of `text` makes whole phrases: up to its last `pause` outside a code block, 0 when none. */
+const cut = (text: string, pause: RegExp) => {
+  const open = text.split('```').length % 2 ? text.length : text.lastIndexOf('```')
+  const last = [...text.slice(0, open).replace(/```[\s\S]*?```/g, block => 'x'.repeat(block.length)).matchAll(pause)].at(-1)
+
+  return last ? last.index + last[0].length : 0
+}
 
 const setStatus = ($: EngineInterface, next: VoiceStatus) => update($, status, () => next)
+
+/** The status between utterances: thinking while the main loop's turn runs, else listening. */
+const idle = (): VoiceStatus => (live.turnId === undefined ? 'listening' : 'thinking')
 
 /** Sets the status to `next` while it is speaking. */
 const quiet = ($: EngineInterface, next: VoiceStatus) => update($, status, now => (now === 'speaking' ? next : now))
@@ -94,6 +106,16 @@ const post = async ($: EngineInterface, path: string, body = '') => {
   if (live.port !== undefined) {
     await $.http.fetch(`http://127.0.0.1:${live.port}${path}`, { method: 'POST', body, headers: { 'X-Client': live.client ?? '' } })
   }
+}
+
+/** Shows Speaking and posts `text` to /speak, counted in live.lines. */
+const speak = async ($: EngineInterface, text: string) => {
+  live.lines += 1
+  await setStatus($, 'speaking')
+  await post($, '/speak', text).catch(error => {
+    live.lines -= 1
+    $.ui.log(`Voice speech failed: ${error}`, { to: 'debug' })
+  })
 }
 
 /** The last progress line spoken, and when the last tool summary was. */
@@ -114,8 +136,7 @@ const utter = async ($: EngineInterface, turnId: string, end: number) => {
   }
 
   said.sent += end
-  await setStatus($, 'speaking')
-  await post($, '/speak', text).catch(error => $.ui.log(`Voice speech failed: ${error}`, { to: 'debug' }))
+  await speak($, text)
 }
 
 /** A tool use as its spoken verb and, for a file tool, the file's name without its extensions. */
@@ -175,6 +196,7 @@ const send = async ($: EngineInterface, text: string) => {
 
   if (result.drop !== undefined) {
     $.ui.toast(`Voice prompt dropped: ${result.drop}`)
+    await update($, status, now => (now === 'thinking' ? idle() : now))
   }
 }
 
@@ -184,7 +206,7 @@ const drop = async ($: EngineInterface, paths: string[]) => {
     await post($, path)
   }
   await update($, words, () => '')
-  await update($, status, now => (now === 'hearing' ? 'listening' : now))
+  await update($, status, now => (now === 'hearing' ? idle() : now))
 }
 
 /** Turns the sidecar's microphone off or on. */
@@ -212,11 +234,11 @@ const shortcuts = (isMuted: boolean, tap: boolean) => `alt+m ${tap ? 'talk/send'
 const lookOf = (now: Exclude<VoiceStatus, 'off'>, isMuted: boolean, tap: boolean): VoiceLook =>
   now === 'listening' || now === 'thinking' ? (isMuted ? 'muted' : tap ? 'ready' : 'listening') : now === 'hearing' && tap ? 'rec' : now
 
-/** Ends the reply being spoken and the rest of its step's speech, the status going from speaking to `next`. */
-const skip = async ($: EngineInterface, next: VoiceStatus = 'listening') => {
+/** Ends the reply being spoken and the rest of its step's speech, the status going from speaking to idle. */
+const skip = async ($: EngineInterface) => {
   said.ended = true
   await post($, '/stop')
-  await quiet($, next)
+  await quiet($, idle())
 }
 
 /** Switches between speaking only the answer and speaking progress lines too. */
@@ -226,6 +248,9 @@ const toggleVerbosity = ($: EngineInterface) => update($, verbosity, now => (now
 const press = async ($: EngineInterface) => {
   if ((await read($, mode)) === 'handsFree') {
     return toggleMute($)
+  }
+  if (live.port === undefined) {
+    return
   }
 
   const recording = (await read($, status)) === 'hearing'
@@ -253,18 +278,22 @@ const stop = async ($: EngineInterface) => {
 const handle = async ($: EngineInterface, event: SidecarEvent) => {
   switch (event.type) {
     case 'ready':
+      if (live.client === undefined) {
+        $.ui.toast(`Voice mode on (${event.device}). Say "stop voice mode" to end.`)
+      }
       live.port = event.port
       live.client = event.client
+      live.lines = 0
       if (!(await read($, muted)) && (await read($, mode)) === 'handsFree') {
         await post($, '/unmute')
       }
-      $.ui.toast(`Voice mode on (${event.device}). Say "stop voice mode" to end.`)
-      return setStatus($, 'listening')
+      return setStatus($, idle())
     case 'loading':
       live.port = undefined
+      await update($, words, () => '')
       return setStatus($, 'loading')
     case 'taken':
-      $.ui.toast('Another session took the microphone.')
+      $.ui.toast('Another session took the microphone. Press Talk to take it back.')
       await update($, mode, () => 'tapToTalk')
       await update($, muted, () => false)
       return drop($, [])
@@ -285,13 +314,13 @@ const handle = async ($: EngineInterface, event: SidecarEvent) => {
         return stop($)
       }
       if (!event.text) {
-        return setStatus($, 'listening')
+        return setStatus($, idle())
       }
       await setStatus($, 'thinking')
       void send($, event.text)
       return
     case 'spoken':
-      return live.turnId === undefined ? quiet($, 'listening') : undefined
+      return live.turnId === undefined && (event.lines ?? live.lines) >= live.lines ? quiet($, 'listening') : undefined
     case 'level':
       return update($, levels, () => ({ mic: event.mic, out: event.out }))
     case 'log':
@@ -359,7 +388,7 @@ export const register: Register = on => {
       live.turnId = e.turnId
 
       if (live.port !== undefined) {
-        await setStatus($, 'thinking')
+        await update($, status, now => (now === 'hearing' ? now : 'thinking'))
       }
     }
 
@@ -380,14 +409,14 @@ export const register: Register = on => {
 
       if (chunk.kind === 'text') {
         said.text += chunk.text
-        await utter($, e.turnId, cut(said.text.slice(said.sent), !said.sent))
+        await utter($, e.turnId, cut(said.text.slice(said.sent), !said.sent && (await read($, verbosity)) === 'progress' ? PAUSE : SENTENCE_END))
       } else if (chunk.kind === 'tool' && !spoke && speakable(said.text)) {
         spoke = true
 
         if (!said.sent) {
           await narrate($, e.turnId, speakable(said.text), false)
         } else if ((await read($, verbosity)) === 'answer') {
-          await skip($, 'thinking').catch(error => $.ui.log(`Voice stop failed: ${error}`, { to: 'debug' }))
+          await skip($).catch(error => $.ui.log(`Voice stop failed: ${error}`, { to: 'debug' }))
         } else {
           await utter($, e.turnId, said.text.length - said.sent)
           await quiet($, 'thinking')
@@ -423,11 +452,10 @@ export const register: Register = on => {
     const going = e.reason === 'answer' && !said.ended
     const text = going ? speakable(said.sent ? said.text.slice(said.sent) : e.answer) : ''
 
-    if (text || (going && said.sent)) {
-      await setStatus($, 'speaking')
-      await post($, '/speak', text)
+    if (going && (text || said.sent)) {
+      await speak($, text)
     } else {
-      await setStatus($, 'listening')
+      await setStatus($, idle())
     }
 
     return result
@@ -460,7 +488,7 @@ export const register: Register = on => {
           </Box>
           <Box flexDirection="row" columnGap={2}>
             {animated && <Client key="voice-meter" module="./voice-panel.tsx" props={{ part: 'meter', look, color, ...(await read($, levels)) }} />}
-            <Text dimColor italic={!!heard}>{clip(heard || (now === 'thinking' && busy) || hint,e.props.bodyColumns - FRAME_COLUMNS - (animated ? METER_COLUMNS + 2 : 0))}</Text>
+            <Text dimColor italic={!!heard}>{clip(heard || (now === 'thinking' && busy) || hint, e.props.bodyColumns - FRAME_COLUMNS - (animated ? METER_COLUMNS + 2 : 0))}</Text>
           </Box>
           <Box flexDirection="row" columnGap={1}>
             <Button key="voice-mute" label={primaryLabel(now, isMuted, tap)} hotkey="m" action="app:toggleDiffPreSession" onPress={() => press($)} />
