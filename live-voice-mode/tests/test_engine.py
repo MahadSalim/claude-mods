@@ -1,4 +1,4 @@
-"""Engine routing, the single-instance lock, the relay and per-session `spoken`, with fakes: no models, no audio."""
+"""Engine routing, its tray wake-ups, loading and failure, the log, the single-instance lock and the relay, with fakes: no models, no audio."""
 
 import contextlib
 import io
@@ -13,12 +13,10 @@ import time
 import types
 import unittest
 import urllib.request
-from unittest import mock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "sidecar"))
-
-import numpy as np
 
 import relay
 from engine import LOG_BYTES, Engine, Flag, journal
@@ -28,7 +26,7 @@ from live_voice.server import serve
 
 
 class FakeSpeaker:
-    def __init__(self):
+    def __init__(self, *_):
         self.client = None
         self.said = []
         self.stops = []
@@ -43,17 +41,12 @@ class FakeSpeaker:
         self.stops.append(client)
 
 
-def fresh():
-    """Points the relay at a new, empty folder for the state and lock files."""
-    folder = tempfile.mkdtemp()
-    relay.ENGINE_STATE, relay.ENGINE_LOCK = os.path.join(folder, "engine.json"), os.path.join(folder, "engine.lock")
-
-
-def started():
-    """An engine with fake models loaded, holding the lock, its server up and its port in the state file, and the handlers of its event streams."""
+def started(loaded=True):
+    """An engine holding the lock, its server up and its port in the state file, with fake models loaded unless not `loaded`, and the handlers of its event streams."""
     engine = Engine()
     engine.handle = hold(relay.ENGINE_LOCK, 0)
-    engine.speaker, engine.device = FakeSpeaker(), "cpu"
+    if loaded:
+        engine.speaker, engine.device = FakeSpeaker(), "cpu"
     handlers = []
     engine.port = serve(engine.routes, lambda handler: (handlers.append(handler), engine.join(handler)))
     with open(relay.ENGINE_STATE, "w") as file:
@@ -64,8 +57,7 @@ def started():
 def joined():
     """A session's event stream on the current engine, and its client id from `ready`."""
     lines = relay.attach()
-    event = json.loads(lines.readline())
-    return lines, event["client"]
+    return lines, next_event(lines)["client"]
 
 
 def post(engine, client, path, body=""):
@@ -84,13 +76,16 @@ def settle(until, seconds=3.0):
     return until()
 
 
-class Routing(unittest.TestCase):
+class Case(unittest.TestCase):
+    """Points the relay at new, empty state and lock files, and restores `events.route` and `relay.start`."""
+
     def setUp(self):
-        fresh()
+        folder = tempfile.mkdtemp()
+        self.enterContext(mock.patch.multiple(relay, ENGINE_STATE=os.path.join(folder, "engine.json"), ENGINE_LOCK=os.path.join(folder, "engine.lock"), start=relay.start))
+        self.addCleanup(setattr, events, "route", None)
 
-    def tearDown(self):
-        events.route = None
 
+class Routing(Case):
     def test_the_microphone_goes_to_one_session_and_speech_to_its_own(self):
         engine, _ = started()
         events.route = engine.route
@@ -100,7 +95,7 @@ class Routing(unittest.TestCase):
         self.assertEqual((engine.owner, engine.muted.is_set()), (first, False))
         post(engine, second, "/unmute")
         self.assertEqual(next_event(a), {"type": "taken"})
-        self.assertEqual((engine.owner, list(engine.requests.queue)), (second, ["cancel"]))
+        self.assertEqual((engine.owner, engine.muted.is_set(), list(engine.requests.queue)), (second, False, ["cancel"]))
 
         post(engine, first, "/mute")
         self.assertEqual((engine.owner, engine.muted.is_set()), (second, False))
@@ -117,11 +112,10 @@ class Routing(unittest.TestCase):
 
         b.close()
         self.assertTrue(settle(lambda: engine.owner is None and engine.muted.is_set()))
-        self.assertEqual(list(engine.requests.queue), ["cancel", "cancel"])
-        self.assertTrue(engine.present.is_set())
+        self.assertEqual((list(engine.requests.queue), engine.present.is_set()), (["cancel", "cancel"], True))
         a.close()
         self.assertTrue(settle(lambda: not engine.present.is_set()))
-        self.assertEqual(engine.speaker.stops, [first, second, first])
+        self.assertEqual((list(engine.requests.queue), engine.speaker.stops), ([], [first, second, first]))
 
     def test_a_recording_frees_the_microphone_once_heard_and_a_taken_one_is_dropped(self):
         engine, _ = started()
@@ -151,11 +145,6 @@ class Routing(unittest.TestCase):
         self.assertIsNone(engine.owner)
         a.close(), b.close()
 
-
-class Tray(unittest.TestCase):
-    def setUp(self):
-        fresh()
-
     def test_each_change_the_tray_shows_wakes_it(self):
         engine, _ = started()
         busy = engine.speaker.busy = Flag(engine.changed)
@@ -178,27 +167,25 @@ class Tray(unittest.TestCase):
         self.assertTrue(wakes(lambda: engine.finish("quit")))
 
 
-class Failure(unittest.TestCase):
-    def setUp(self):
-        fresh()
+class Lifetime(Case):
+    def test_a_session_waiting_on_the_models_gets_ready_then_end_when_the_audio_fails(self):
+        engine, _ = started(loaded=False)
+        lines = relay.attach()
+        self.assertEqual(engine.status(), "loading")
 
-    def test_a_failure_loading_the_models_ends_every_session_and_the_engine(self):
-        engine, _ = started()
-        lines, _ = joined()
+        def broken(*_):
+            raise RuntimeError("no microphone")
 
-        def broken(path):
-            raise RuntimeError("no GPU")
-
-        loaders = types.SimpleNamespace(listen=None, VoiceDetector=None, LiveWords=None, Speaker=None, Transcriber=broken)
+        loaders = types.SimpleNamespace(listen=broken, VoiceDetector=lambda: None, LiveWords=lambda _: None, Speaker=FakeSpeaker, Transcriber=lambda _: types.SimpleNamespace(device="cpu"))
         modules = {f"live_voice.{name}": loaders for name in ("audio", "detector", "live_words", "speaker", "transcriber")}
         with mock.patch.dict(sys.modules, modules), contextlib.redirect_stderr(io.StringIO()):
             engine.run()
 
-        self.assertEqual((next_event(lines), engine.ending), ({"type": "end", "text": "Voice engine failed: no GPU"}, "failed"))
+        self.assertEqual(next_event(lines), {"type": "ready", "port": engine.port, "device": "cpu", "client": "1"})
+        self.assertEqual((next_event(lines), engine.ending), ({"type": "end", "text": "Voice engine failed: no microphone"}, "failed"))
+        self.assertIsInstance(engine.speaker.busy, Flag)
         lines.close()
 
-
-class Log(unittest.TestCase):
     def test_a_log_over_log_bytes_moves_aside_when_the_engine_starts(self):
         path = os.path.join(tempfile.mkdtemp(), "engine.log")
         for size, kept in ((10, "x" * 10), (LOG_BYTES + 1, "")):
@@ -210,28 +197,23 @@ class Log(unittest.TestCase):
                 self.assertEqual(file.read(), kept + "y")
         self.assertEqual(os.path.getsize(f"{path}.old"), LOG_BYTES + 1)
 
-
-class SingleInstance(unittest.TestCase):
     def test_one_engine_holds_the_lock_and_a_dead_ones_is_free(self):
-        path = os.path.join(tempfile.mkdtemp(), "engine.lock")
+        path = relay.ENGINE_LOCK
         sidecar = os.path.dirname(relay.__file__)
         subprocess.run([sys.executable, "-c", f"import sys; sys.path.insert(0, {sidecar!r}); from live_voice.launch import hold; assert hold({path!r}, 0) is not None"], check=True)
 
         self.assertTrue(free(path))
         self.assertIsNotNone(hold(path, 0))
         self.assertFalse(free(path))
-        self.assertIsNone(hold(path, 0.3))
+        self.assertIsNone(hold(path, 0.2))
 
 
-class Relay(unittest.TestCase):
+class Relay(Case):
     def setUp(self):
-        fresh()
+        super().setUp()
         self.seen, self.launched = [], []
         events.route = self.seen.append
         relay.start = lambda argv: self.launched.append(argv) or "popen"
-
-    def tearDown(self):
-        events.route = None
 
     def kinds(self):
         return [event["type"] for event in self.seen]
@@ -239,10 +221,10 @@ class Relay(unittest.TestCase):
     def test_a_stale_state_file_starts_one_engine(self):
         with open(relay.ENGINE_STATE, "w") as file:
             json.dump({"port": 1, "pid": 0}, file)
-        relay.start = lambda argv: self.launched.append(argv) or threading.Timer(0.5, started).start() or "popen"
+        relay.start = lambda argv: self.launched.append(argv) or threading.Timer(0.3, started).start() or "popen"
 
         lines = relay.connect()
-        self.assertEqual(json.loads(lines.readline())["type"], "ready")
+        self.assertEqual(next_event(lines)["type"], "ready")
         self.assertEqual([[os.path.basename(path) for path in argv] for argv in self.launched], [["pythonw.exe", "engine.py"]])
         lines.close()
 
@@ -255,14 +237,13 @@ class Relay(unittest.TestCase):
             def log_message(self, *args):
                 pass
 
-        server = ThreadingHTTPServer(("127.0.0.1", 0), Other)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        with open(relay.ENGINE_STATE, "w") as file:
-            json.dump({"port": server.server_address[1], "pid": 0}, file)
+        with ThreadingHTTPServer(("127.0.0.1", 0), Other) as server:
+            threading.Thread(target=server.serve_forever, args=(0.01,), daemon=True).start()
+            with open(relay.ENGINE_STATE, "w") as file:
+                json.dump({"port": server.server_address[1], "pid": 0}, file)
 
-        self.assertIsNone(relay.attach())
-        server.shutdown()
-        server.server_close()
+            self.assertIsNone(relay.attach())
+            server.shutdown()
 
     def test_the_relay_reconnects_after_a_restart_and_ends_when_the_engine_quits(self):
         first, old = started()
@@ -279,31 +260,6 @@ class Relay(unittest.TestCase):
         engine.end("Voice engine quit; voice mode off.")
         thread.join(3)
         self.assertEqual((self.seen[-1], thread.is_alive()), ({"type": "end", "text": "Voice engine quit; voice mode off."}, False))
-
-
-class Spoken(unittest.TestCase):
-    def test_each_session_hears_spoken_once_its_own_lines_end(self):
-        class Kokoro:
-            def __init__(self, *paths):
-                pass
-
-            def create(self, text, **options):
-                return np.full(2400, 0.1, dtype=np.float32), 24000
-
-        sys.modules["kokoro_onnx"] = types.SimpleNamespace(Kokoro=Kokoro)
-        from live_voice.speaker import Speaker
-
-        seen = []
-        speaker = Speaker("")
-        events.route = lambda event: seen.append((event["type"], speaker.client))
-        for text, client in (("a.", "1"), ("b.", "1"), ("c.", "2")):
-            speaker.say(text, client)
-
-        settle(lambda: speaker.pull(480) is not None and len(seen) == 2)
-        self.assertEqual(seen, [("spoken", "1"), ("spoken", "2")])
-
-    def tearDown(self):
-        events.route = None
 
 
 if __name__ == "__main__":

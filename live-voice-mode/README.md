@@ -11,7 +11,7 @@ Voice mode for Claude Code, tap to talk or hands-free. `/live-voice` turns it on
 | `hooks/hooks.json` | Lists `register.tsx` as the hooks module. |
 | `types/index.d.ts` | `VoiceStatus`, `VoiceMode`, `VoiceVerbosity`, `VoiceLook`, `VoiceLevels` and the mod's state keys: `status`, `mode`, `muted`, `words`, `levels`, `verbosity`. |
 | `tests/live-voice-mode.test.ts` | Mod tests against a fake relay. |
-| `tests/test_engine.py` | Engine routing, the single-instance lock, the relay and per-session `spoken`, with fakes: no models, no audio. |
+| `tests/test_engine.py` | Engine routing, its tray wake-ups, loading and failure, the log, the single-instance lock and the relay, with fakes: no models, no audio. |
 | `sidecar/engine.py` | The shared engine, one per machine: loads the models, owns the microphone and speaker, serves every session over localhost HTTP, routes each event to its session, shows the tray icon. |
 | `sidecar/relay.py` | One session's link to the engine, stdlib only: starts the engine when none answers, holds its event stream, writes the events on stdout, and dies with the session. |
 | `sidecar/live_voice/config.py` | Sidecar settings: model folders, voice, `HOTWORDS` (words Whisper is biased towards: Claude, Claude Code), the engine's lock, state and log files, `LOCK_SECONDS`/`START_SECONDS`, sample rates, VAD thresholds and frame counts, including `END_FRAMES` (2.5 s of silence ends a hands-free utterance), `MANUAL_MAX_FRAMES` (2 min cap on a tap-to-talk recording), `LEVEL_EVERY`/`LEVEL_FLOOR` (level events), and `NARRATE_SECONDS` (4 s: a progress line still waiting that long is dropped). |
