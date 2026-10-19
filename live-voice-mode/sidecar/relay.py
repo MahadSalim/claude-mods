@@ -74,7 +74,7 @@ def main():
             break
         emit("loading")
 
-    emit("end", text="Voice engine did not start; voice mode off.")
+    emit("end", text="Voice engine did not start; voice mode off." if free(ENGINE_LOCK) else "Voice engine did not answer; restart it from its tray icon. Voice mode off.")
 
 
 if __name__ == "__main__":

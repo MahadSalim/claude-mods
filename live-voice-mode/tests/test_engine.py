@@ -228,6 +228,13 @@ class Relay(Case):
         self.assertEqual([[os.path.basename(path) for path in argv] for argv in self.launched], [["pythonw.exe", "engine.py"]])
         lines.close()
 
+    def test_an_engine_that_holds_the_lock_but_never_answers_is_not_replaced(self):
+        handle = hold(relay.ENGINE_LOCK, 0)
+        with mock.patch.object(relay, "START_SECONDS", 0.3):
+            relay.main()
+        os.close(handle)
+        self.assertEqual((self.seen, self.launched), ([{"type": "end", "text": "Voice engine did not answer; restart it from its tray icon. Voice mode off."}], []))
+
     def test_another_program_on_the_state_files_port_is_not_the_engine(self):
         class Other(BaseHTTPRequestHandler):
             def do_GET(self):
