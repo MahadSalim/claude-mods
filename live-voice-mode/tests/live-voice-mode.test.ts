@@ -70,7 +70,7 @@ test('voice mode submits what it hears, speaks the reply, and ends on the stop p
 
   const answer = 'Done. Here:\n```ts\nconst a = 1\n```\nSee `register.tsx` and **this**.'
   await $.turn.complete({ turnId: 't1', reason: 'answer', answer, durationMs: 1, isAborted: false })
-  expect(spoken.at(-1)).toBe('http://127.0.0.1:4321/speak Done. Here: Code block omitted. See register.tsx and this.')
+  expect(spoken.at(-1)).toBe('http://127.0.0.1:4321/speak Done. Here: See register.tsx and this.')
   expect(await shows()).toBe('SPEAKING')
 
   open()
@@ -481,7 +481,7 @@ test('a first phrase with no pause comes at eight words, and a code block only o
   await $.turn.start({ turnId: 't1', text: 'go' })
   await step(['Here, run:\n```', 'sh\nnpm test\n', '```\nThat is it. '], [])
   await answered($, 'Here, run:\n```sh\nnpm test\n```\nThat is it.')
-  expect(bodies(spoken, '/speak')).toEqual(['one two three four five six seven eight', 'nine ten', 'Here, run:', 'Code block omitted. That is it.', ''])
+  expect(bodies(spoken, '/speak')).toEqual(['one two three four five six seven eight', 'nine ten', 'Here, run:', 'That is it.', ''])
   await close()
 })
 
