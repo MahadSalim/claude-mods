@@ -1,8 +1,20 @@
-"""Sidecar settings: model folders, the speaking voice, and audio tuning."""
+"""Sidecar settings: model folders, the speaking voice, the engine's files, and audio tuning."""
 
 WHISPER = "C:/Users/Mahad/models/whisper-large-v3-turbo"
 KOKORO = "C:/Users/Mahad/models/kokoro"
 VOICE = "af_heart"
+
+# Words Whisper is biased towards hearing.
+HOTWORDS = "Claude, Claude Code"
+
+# The engine's lock, state (port and pid) and log files.
+ENGINE_LOCK = "C:/Users/Mahad/.cache/live-voice-mode/engine.lock"
+ENGINE_STATE = "C:/Users/Mahad/.cache/live-voice-mode/engine.json"
+ENGINE_LOG = "C:/Users/Mahad/.cache/live-voice-mode/engine.log"
+
+# Seconds an engine waits for the lock, and a relay for an engine to answer.
+LOCK_SECONDS = 10.0
+START_SECONDS = 30.0
 
 # Sample rates in Hz; FRAME is one VAD frame at RATE and CHUNK one duplex block at PLAY_RATE, in samples.
 RATE = 16000

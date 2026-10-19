@@ -35,16 +35,22 @@ class Speaker:
         self.busy = threading.Event()
         self.quiet_since = 0.0
         self.level = 0.0
+        self.client = None
         threading.Thread(target=self.run, daemon=True).start()
 
-    def say(self, text):
-        """Queues an answer after the speech playing and drops every progress line not yet started."""
+    def say(self, text, client=None):
+        """Queues an answer of `client` after the speech playing and drops every progress line not yet started."""
         self.answers += 1
-        self.lines.put((self.generation, self.answers, None, text))
+        self.lines.put((self.generation, self.answers, None, text, client))
 
-    def narrate(self, text):
-        """Queues a progress line, dropped by a later answer or stop, or once older than NARRATE_SECONDS."""
-        self.lines.put((self.generation, self.answers, time.monotonic(), text))
+    def narrate(self, text, client=None):
+        """Queues a progress line of `client`, dropped by a later answer or stop, or once older than NARRATE_SECONDS."""
+        self.lines.put((self.generation, self.answers, time.monotonic(), text, client))
+
+    def follows(self, client):
+        """Whether the next queued line is `client`'s."""
+        with self.lines.mutex:
+            return bool(self.lines.queue) and self.lines.queue[0][-1] == client
 
     def stop(self):
         """Drops what is playing and every line said before it."""
@@ -64,7 +70,7 @@ class Speaker:
 
     def run(self):
         while True:
-            generation, answers, queued, text = self.lines.get()
+            generation, answers, queued, text, self.client = self.lines.get()
             narration = queued is not None
             if narration and (answers != self.answers or time.monotonic() - queued > NARRATE_SECONDS):
                 generation = None
@@ -81,11 +87,11 @@ class Speaker:
                         break
                     self.pending = np.concatenate([self.pending, to_pcm(audio, rate)])
 
-            while len(self.pending) and generation == self.generation and self.lines.empty():
+            while len(self.pending) and generation == self.generation and not self.follows(self.client):
                 time.sleep(0.05)
 
             if self.lines.empty():
                 self.quiet_since = time.monotonic()
                 self.busy.clear()
-                if not narration:
-                    emit("spoken")
+            if not narration and not self.follows(self.client):
+                emit("spoken")

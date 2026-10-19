@@ -7,7 +7,7 @@ import threading
 
 import numpy as np
 
-from .config import RATE
+from .config import HOTWORDS, RATE
 from .events import emit
 
 
@@ -39,7 +39,7 @@ class Transcriber:
     def read(self, audio, **options):
         """Returns the text Whisper hears in the audio with `options`, without segments it judges silent, one pass at a time."""
         with self.lock:
-            segments, _ = self.model.transcribe(audio, language="en", condition_on_previous_text=False, **options)
+            segments, _ = self.model.transcribe(audio, language="en", condition_on_previous_text=False, hotwords=HOTWORDS, **options)
             return " ".join(s.text.strip() for s in segments if s.no_speech_prob < 0.6).strip()
 
     def transcribe(self, audio):

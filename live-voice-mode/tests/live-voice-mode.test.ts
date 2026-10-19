@@ -17,15 +17,19 @@ const settle = () => new Promise(resolve => setTimeout(resolve, 50))
 const head = async (band: { find: (query: { key: string }) => Promise<{ props: Record<string, unknown> } | undefined> }) =>
   ((await band.find({ key: 'voice-head' }))?.props.props as { title: string } | undefined)?.title
 
-/** Answers the calls the mod makes beneath it, with a sidecar that writes `lines` and waits for each of `gates` before the matching one of its last lines. */
+/** Answers the calls the mod makes beneath it, with a relay that writes `lines` and waits for each of `gates` before the matching one of its last lines. */
 const world = (on: On, lines: string[], ...gates: Promise<void>[]) => {
   const submitted: string[] = []
   const spoken: string[] = []
   const aborted: string[] = []
-  on('ui.toast', () => DONE)
+  const clients: string[] = []
+  const toasts: string[] = []
+  const argv: string[] = []
+  on('ui.toast', ($, e) => (toasts.push(e.text), DONE))
   on('ui.log', () => DONE)
   on('ui.render', () => ({ type: 'Box', props: {}, children: [] }))
-  on('process.spawn', async function* () {
+  on('process.spawn', async function* ($, e) {
+    argv.push(...e.argv)
     for (const [index, text] of lines.entries()) {
       await gates[index - lines.length + gates.length]
       yield { stream: 'stdout' as const, text }
@@ -34,12 +38,18 @@ const world = (on: On, lines: string[], ...gates: Promise<void>[]) => {
     return { value: { code: 0, signal: null } }
   })
   on('prompt.submit', ($, e) => (submitted.push(e.text), { text: e.text }))
-  on('http.fetch', ($, e) => (spoken.push(`${e.url} ${e.init?.body}`), { value: { status: 204, ok: true, headers: {}, text: '' } }))
+  on('http.fetch', ($, e) => (spoken.push(`${e.url} ${e.init?.body}`), clients.push(e.init?.headers?.['X-Client'] ?? ''), { value: { status: 204, ok: true, headers: {}, text: '' } }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('turn.abort', ($, e) => (aborted.push(e.turnId), DONE))
 
-  return { submitted, spoken, aborted }
+  return { submitted, spoken, aborted, clients, toasts, argv }
+}
+
+/** A gate a fake relay waits on, and a call that opens it and lets the mod settle. */
+const gate = () => {
+  let release = () => {}
+  return { opened: new Promise<void>(resolve => (release = resolve)), open: () => (release(), settle()) }
 }
 
 test('voice mode submits what it hears, speaks the reply, and ends on the stop phrase', async ($, on) => {
@@ -520,10 +530,6 @@ test('Skip ends the rest of a streaming reply', { timeoutMs: 30000 }, async ($, 
 })
 
 test('the panel stays speaking between streamed phrases until the whole reply is spoken', { timeoutMs: 30000 }, async ($, on) => {
-  const gate = () => {
-    let release = () => {}
-    return { opened: new Promise<void>(resolve => (release = resolve)), open: () => (release(), settle()) }
-  }
   const gates = [gate(), gate(), gate()] as const
   const { spoken } = world(on, [line({ type: 'ready', port: 4321, device: 'cuda' }), line({ type: 'spoken' }), line({ type: 'spoken' }), line({ type: 'log', text: 'end' })], ...gates.map(gate => gate.opened))
   const run = stepper(on)
@@ -544,4 +550,67 @@ test('the panel stays speaking between streamed phrases until the whole reply is
   expect(await head(band)).toBe('READY')
   await band.unmount()
   await gates[2].open()
+})
+test('voice mode runs the relay and sends each request as the client it reports', { timeoutMs: 30000 }, async ($, on) => {
+  const closing = gate()
+  const { argv, spoken, clients } = world(on, [line({ type: 'ready', port: 4321, device: 'cuda', client: '7' }), line({ type: 'log', text: 'end' })], closing.opened)
+
+  await $.command.run({ command: 'live-voice', args: '' } as never)
+  await settle()
+  const band = await $.ui.mount(BAND)
+  await band.press({ key: 'voice-mute' })
+  expect(argv.at(-1)).toMatch(/\/sidecar\/relay\.py$/)
+  expect([spoken, clients]).toEqual([['http://127.0.0.1:4321/talk '], ['7']])
+  await band.unmount()
+  await closing.open()
+})
+
+test('a session whose microphone another session took goes back to tap to talk', { timeoutMs: 30000 }, async ($, on) => {
+  const [taken, closing] = [gate(), gate()]
+  const { toasts } = world(on, [line({ type: 'ready', port: 4321, device: 'cuda', client: '1' }), line({ type: 'taken' }), line({ type: 'log', text: 'end' })], taken.opened, closing.opened)
+
+  await $.command.run({ command: 'live-voice', args: '' } as never)
+  await settle()
+  const band = await $.ui.mount(BAND)
+  const shows = async () => [(await band.find({ key: 'voice-mute' }))?.props.label, await head(band), (await band.find({ type: 'Text', text: MODE }))?.text]
+  await band.press({ key: 'voice-mode' })
+  expect(await shows()).toEqual(['Mute', 'LISTENING', 'hands-free'])
+
+  await taken.open()
+  expect(await shows()).toEqual(['Talk', 'READY', 'tap to talk'])
+  expect(toasts.at(-1)).toBe('Another session took the microphone.')
+  await band.unmount()
+  await closing.open()
+})
+
+test('the panel shows loading while the engine restarts, and an engine that quits ends voice mode with its toast', { timeoutMs: 30000 }, async ($, on) => {
+  const [restarting, restarted, quitting] = [gate(), gate(), gate()]
+  const { spoken, clients, toasts } = world(
+    on,
+    [
+      line({ type: 'ready', port: 4321, device: 'cuda', client: '1' }),
+      line({ type: 'loading' }),
+      line({ type: 'ready', port: 5555, device: 'cuda', client: '2' }),
+      line({ type: 'end', text: 'Voice engine quit; voice mode off.' }),
+    ],
+    restarting.opened,
+    restarted.opened,
+    quitting.opened,
+  )
+
+  await $.command.run({ command: 'live-voice', args: '' } as never)
+  await settle()
+  const band = await $.ui.mount(BAND)
+  await restarting.open()
+  expect(await head(band)).toBe('LOADING')
+
+  await restarted.open()
+  expect(await head(band)).toBe('READY')
+  await band.press({ key: 'voice-mute' })
+  expect([spoken.at(-1), clients.at(-1)]).toEqual(['http://127.0.0.1:5555/talk ', '2'])
+
+  await quitting.open()
+  expect(await head(band)).toBe(undefined)
+  expect(toasts.at(-1)).toBe('Voice engine quit; voice mode off.')
+  await band.unmount()
 })

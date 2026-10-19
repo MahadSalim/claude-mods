@@ -1,29 +1,30 @@
-"""Localhost HTTP control: /speak, /narrate, /stop, /mute, /unmute, /talk, /send and /cancel."""
+"""Localhost HTTP: a session's control routes and its event stream."""
 
 import threading
-from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
-def serve(speaker, muted, requests):
-    """Starts the control server on a free localhost port and returns the port; /talk, /send and /cancel go onto `requests` by name."""
+def serve(routes, join):
+    """Starts the server on a free localhost port and returns the port.
+
+    POST <path> calls `routes[path](client, body)`, `client` the X-Client header; GET /events calls `join(handler)`, which holds the stream open.
+    """
 
     class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200 if self.path == "/events" else 404)
+            self.end_headers()
+
+            if self.path == "/events":
+                join(self)
+
         def do_POST(self):
             body = self.rfile.read(int(self.headers.get("Content-Length", 0))).decode("utf-8")
-            actions = {
-                "/speak": lambda: speaker.say(body),
-                "/narrate": lambda: speaker.narrate(body),
-                "/stop": speaker.stop,
-                "/mute": muted.set,
-                "/unmute": muted.clear,
-                **{f"/{name}": partial(requests.put, name) for name in ("talk", "send", "cancel")},
-            }
 
-            if self.path not in actions:
+            if self.path not in routes:
                 self.send_response(404)
             else:
-                actions[self.path]()
+                routes[self.path](self.headers.get("X-Client"), body)
                 self.send_response(204)
 
             self.end_headers()

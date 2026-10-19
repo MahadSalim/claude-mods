@@ -25,12 +25,11 @@ from .config import (
     START_FRAMES,
     START_PROB,
 )
-from .detector import VoiceDetector
 from .events import emit
 
 
-def listen(transcriber, speaker, words, muted, requests, ready):
-    """Plays the speaker's audio, reads the echo-cancelled microphone forever, and emits each utterance it hears.
+def listen(transcriber, speaker, words, detector, muted, requests, live):
+    """Plays the speaker's audio, reads the echo-cancelled microphone while `live` is set, and emits each utterance it hears.
 
     `requests` carries "talk", "send" and "cancel" for a manual recording, which ignores `muted` and silence.
     """
@@ -42,7 +41,6 @@ def listen(transcriber, speaker, words, muted, requests, ready):
     chunks = queue.Queue()
     preroll = collections.deque(maxlen=PREROLL_FRAMES)
     recent = collections.deque(maxlen=BARGE_WINDOW)
-    detector = VoiceDetector()
     samples = np.zeros(0, dtype=np.float32)
     voiced = []
     loud = 0
@@ -61,9 +59,8 @@ def listen(transcriber, speaker, words, muted, requests, ready):
 
     with sd.Stream(device=devices, samplerate=PLAY_RATE, blocksize=CHUNK, channels=1, dtype="int16", callback=on_audio) as stream:
         apm.set_stream_delay_ms(int(sum(stream.latency) * 1000))
-        emit("ready", **ready)
 
-        while True:
+        while live.is_set():
             samples = np.concatenate([samples, chunks.get()])
 
             if len(samples) < FRAME:
@@ -133,3 +130,5 @@ def listen(transcriber, speaker, words, muted, requests, ready):
             preroll.clear()
             recent.clear()
             voiced, loud, silent, manual = [], 0, 0, False
+
+    words.end()

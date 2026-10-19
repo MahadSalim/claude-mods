@@ -39,9 +39,12 @@ const words = atom({ plugin: 'live-voice-mode', key: 'words' } as const, '')
 const levels = atom({ plugin: 'live-voice-mode', key: 'levels' } as const, { mic: 0, out: 0 } as VoiceLevels)
 const verbosity = atom({ plugin: 'live-voice-mode', key: 'verbosity' } as const, 'answer' as VoiceVerbosity)
 
-/** One JSON line the sidecar writes. */
+/** One JSON line the relay writes. */
 type SidecarEvent =
-  | { type: 'ready'; port: number; device: string }
+  | { type: 'ready'; port: number; device: string; client: string }
+  | { type: 'loading' }
+  | { type: 'taken' }
+  | { type: 'end'; text: string }
   | { type: 'speech' }
   | { type: 'partial'; text: string }
   | { type: 'heard'; text: string }
@@ -51,8 +54,8 @@ type SidecarEvent =
 
 type Sidecar = HookStream<ProcessSpawnChunk, ProcessSpawnResult>
 
-/** The running sidecar and its HTTP port, both unset while voice mode is off, and the main loop's running turn. */
-const live: { sidecar?: Sidecar; port?: number; turnId?: string } = {}
+/** The running relay, the engine's HTTP port and this session's client id there, all unset while voice mode is off, and the main loop's running turn. */
+const live: { sidecar?: Sidecar; port?: number; client?: string; turnId?: string } = {}
 
 /** Surfaces where a panel Client failed. */
 const faulted = new Set<string>()
@@ -86,10 +89,10 @@ const setStatus = ($: EngineInterface, next: VoiceStatus) => update($, status, (
 /** Sets the status to `next` while it is speaking. */
 const quiet = ($: EngineInterface, next: VoiceStatus) => update($, status, now => (now === 'speaking' ? next : now))
 
-/** Sends one request to the sidecar's HTTP server. */
+/** Sends one request to the engine's HTTP server as this session. */
 const post = async ($: EngineInterface, path: string, body = '') => {
   if (live.port !== undefined) {
-    await $.http.fetch(`http://127.0.0.1:${live.port}${path}`, { method: 'POST', body })
+    await $.http.fetch(`http://127.0.0.1:${live.port}${path}`, { method: 'POST', body, headers: { 'X-Client': live.client ?? '' } })
   }
 }
 
@@ -233,11 +236,12 @@ const press = async ($: EngineInterface) => {
   await post($, recording ? '/send' : '/talk')
 }
 
-/** Ends the sidecar and voice mode. */
+/** Ends the relay and voice mode. */
 const stop = async ($: EngineInterface) => {
   void live.sidecar?.return(undefined as never)
   live.sidecar = undefined
   live.port = undefined
+  live.client = undefined
   Object.assign(told, { line: '', at: -Infinity })
   await update($, mode, () => 'tapToTalk')
   await update($, muted, () => false)
@@ -250,11 +254,23 @@ const handle = async ($: EngineInterface, event: SidecarEvent) => {
   switch (event.type) {
     case 'ready':
       live.port = event.port
+      live.client = event.client
       if (!(await read($, muted)) && (await read($, mode)) === 'handsFree') {
         await post($, '/unmute')
       }
       $.ui.toast(`Voice mode on (${event.device}). Say "stop voice mode" to end.`)
       return setStatus($, 'listening')
+    case 'loading':
+      live.port = undefined
+      return setStatus($, 'loading')
+    case 'taken':
+      $.ui.toast('Another session took the microphone.')
+      await update($, mode, () => 'tapToTalk')
+      await update($, muted, () => false)
+      return drop($, [])
+    case 'end':
+      $.ui.toast(event.text)
+      return stop($)
     case 'speech':
       await update($, words, () => '')
       return setStatus($, 'hearing')
@@ -283,7 +299,7 @@ const handle = async ($: EngineInterface, event: SidecarEvent) => {
   }
 }
 
-/** Reads the sidecar's output until it exits or voice mode ends. */
+/** Reads the relay's output until it exits or voice mode ends. */
 const pump = async ($: EngineInterface, sidecar: Sidecar) => {
   let buffer = ''
 
@@ -313,7 +329,7 @@ const pump = async ($: EngineInterface, sidecar: Sidecar) => {
 const start = async ($: EngineInterface) => {
   await setStatus($, 'loading')
   live.sidecar = $.process.spawn({
-    argv: [PYTHON, '-u', `${$.plugin.root}/sidecar/voice.py`],
+    argv: [PYTHON, '-u', `${$.plugin.root}/sidecar/relay.py`],
   })
   void pump($, live.sidecar)
 }
