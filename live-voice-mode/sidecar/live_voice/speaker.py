@@ -101,7 +101,7 @@ class Speaker:
                         break
                     self.pending = np.concatenate([self.pending, to_pcm(audio, rate)])
 
-            while len(self.pending) and not stale and not self.cut(serial, client) and not self.follows(client):
+            while len(self.pending) and not self.cut(serial, client) and not self.follows(client):
                 time.sleep(0.05)
 
             if self.lines.empty():

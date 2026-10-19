@@ -71,6 +71,15 @@ class Speaking(unittest.TestCase):
         self.assertEqual(set(play(self.speaker)) - {0.0}, {0.2})
         self.assertEqual(self.seen, [("2", {"type": "spoken", "lines": 1})])
 
+    def test_a_session_stop_cuts_its_line_still_playing_past_a_dropped_progress_line(self):
+        self.speaker.say("a.", "1")
+        self.speaker.narrate("b.", "1")
+        self.speaker.say("c.", "2")
+        self.assertTrue(wait(lambda: len(self.speaker.pending)))
+        time.sleep(0.05)
+        self.speaker.stop("1")
+        self.assertEqual(set(play(self.speaker)) - {0.0}, {0.3})
+
     def test_a_stop_of_all_drops_every_line(self):
         self.say(("a.", "1"), ("b.", "2"))
         self.assertTrue(wait(lambda: len(self.speaker.pending)))
