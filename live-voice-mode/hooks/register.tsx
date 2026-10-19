@@ -67,13 +67,18 @@ const FRAME_COLUMNS = 4
 /** The last `room` characters of `text`, an ellipsis in front when cut. */
 const clip = (text: string, room: number) => (text.length > room ? `…${text.slice(text.length - room + 1)}` : text)
 
-/** A reply as plain speech: code blocks and markdown marks dropped. */
+/** Inline code that reads as a path, a flag or an expression rather than words. */
+const CODE = /[\\/.()[\]{}<>=$;|&~]|(^|\s)-/
+
+/** A reply as plain speech: code blocks, inline code matching CODE and markdown marks dropped. */
 const speakable = (text: string) =>
   text
     .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`\n]*)`/g, (_, code: string) => (CODE.test(code) ? ' ' : code))
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/[`*_#>|]/g, '')
     .replace(/\s+/g, ' ')
+    .replace(/ (?=[,.!?:;])/g, '')
     .trim()
 
 /** A sentence or line end, and for a step's first phrase in progress verbosity also a comma or its first eight words. */

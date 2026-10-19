@@ -81,9 +81,9 @@ test('voice mode submits what it hears, speaks the reply, and ends on the stop p
   expect(spoken).toEqual(['http://127.0.0.1:4321/stop '])
   expect(await shows()).toBe('READY')
 
-  const answer = 'Done. Here:\n```ts\nconst a = 1\n```\nSee `register.tsx` and **this**.'
+  const answer = 'Done. Here:\n```ts\nconst a = 1\n```\nIn `hooks/register.tsx`, `speakable` drops `a.b()` and `--flags` but keeps `npm test` and **this**.'
   await $.turn.complete({ turnId: 't1', reason: 'answer', answer, durationMs: 1, isAborted: false })
-  expect(spoken.at(-1)).toBe('http://127.0.0.1:4321/speak Done. Here: See register.tsx and this.')
+  expect(spoken.at(-1)).toBe('http://127.0.0.1:4321/speak Done. Here: In, speakable drops and but keeps npm test and this.')
   expect(await shows()).toBe('SPEAKING')
 
   open()
