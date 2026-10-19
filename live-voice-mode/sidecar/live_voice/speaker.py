@@ -81,7 +81,7 @@ class Speaker:
                         break
                     self.pending = np.concatenate([self.pending, to_pcm(audio, rate)])
 
-            while len(self.pending) and generation == self.generation:
+            while len(self.pending) and generation == self.generation and self.lines.empty():
                 time.sleep(0.05)
 
             if self.lines.empty():
