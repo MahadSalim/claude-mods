@@ -110,9 +110,9 @@ class Routing(unittest.TestCase):
         engine.speaker.client = first
         events.emit("speech")
         events.emit("level", mic=0.1, out=0.2)
-        events.emit("spoken")
+        events.emit("spoken", lines=1)
         self.assertEqual([next_event(b), next_event(b)], [{"type": "speech"}, {"type": "level", "mic": 0.1, "out": 0.0}])
-        self.assertEqual([next_event(a), next_event(a)], [{"type": "level", "mic": 0.0, "out": 0.2}, {"type": "spoken"}])
+        self.assertEqual([next_event(a), next_event(a)], [{"type": "level", "mic": 0.0, "out": 0.2}, {"type": "spoken", "lines": 1}])
 
         b.close()
         self.assertTrue(settle(lambda: engine.owner is None and engine.muted.is_set()))

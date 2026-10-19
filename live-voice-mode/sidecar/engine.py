@@ -94,7 +94,7 @@ class Engine:
             for client in {self.owner, speaking} - {None}:
                 self.tell(client, kind, mic=fields["mic"] if client == self.owner else 0.0, out=fields["out"] if client == speaking else 0.0)
         elif kind == "spoken":
-            self.tell(self.speaker.client, kind)
+            self.tell(self.speaker.client, kind, **fields)
         else:
             with self.changing():
                 if kind == "speech":
