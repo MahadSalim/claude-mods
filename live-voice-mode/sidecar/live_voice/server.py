@@ -3,20 +3,26 @@
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+# The header line of the engine's GET /events answer.
+MARK = "X-Voice-Engine: 1"
+
 
 def serve(routes, join):
     """Starts the server on a free localhost port and returns the port.
 
-    POST <path> calls `routes[path](client, body)`, `client` the X-Client header; GET /events calls `join(handler)`, which holds the stream open.
+    POST <path> calls `routes[path](client, body)`, `client` the X-Client header; GET /events answers with MARK and calls `join(handler)`, which holds the stream open.
     """
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            self.send_response(200 if self.path == "/events" else 404)
-            self.end_headers()
+            if self.path != "/events":
+                self.send_response(404)
+                return self.end_headers()
 
-            if self.path == "/events":
-                join(self)
+            self.send_response(200)
+            self.send_header(*MARK.split(": "))
+            self.end_headers()
+            join(self)
 
         def do_POST(self):
             body = self.rfile.read(int(self.headers.get("Content-Length", 0))).decode("utf-8")

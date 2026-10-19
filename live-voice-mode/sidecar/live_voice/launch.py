@@ -1,7 +1,10 @@
-"""Starting a process that outlives its parent: detached, windowless and outside the parent's job object."""
+"""Starting a process that outlives its parent, detached, windowless and outside the parent's job object, and the single-instance lock."""
 
 import ctypes
+import msvcrt
+import os
 import subprocess
+import time
 from ctypes import wintypes
 
 FLAGS = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_BREAKAWAY_FROM_JOB
@@ -29,3 +32,29 @@ def start(argv):
     create = f"Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{{CommandLine='{line}'}}"
     subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", create], creationflags=subprocess.CREATE_NO_WINDOW, **QUIET)
     return "wmi"
+
+
+def hold(path, seconds):
+    """Locks `path` through a new handle, waiting up to `seconds`: the handle, locked until closed, or None when another handle holds the lock."""
+    handle = os.open(path, os.O_RDWR | os.O_CREAT)
+    deadline = time.monotonic() + seconds
+
+    while True:
+        try:
+            msvcrt.locking(handle, msvcrt.LK_NBLCK, 1)
+            return handle
+        except OSError:
+            if time.monotonic() > deadline:
+                os.close(handle)
+                return None
+            time.sleep(0.2)
+
+
+def free(path):
+    """Whether no handle holds the lock on `path`."""
+    handle = hold(path, 0)
+    if handle is None:
+        return False
+    msvcrt.locking(handle, msvcrt.LK_UNLCK, 1)
+    os.close(handle)
+    return True
