@@ -6,7 +6,7 @@ Voice mode for Claude Code, tap to talk or hands-free. `/live-voice` turns it on
 
 | File | What it does |
 | --- | --- |
-| `hooks/register.tsx` | The mod: `/live-voice`, spawns the sidecar, handles its events, submits what was heard, posts replies to `/speak` and, in progress verbosity, progress lines to `/narrate`, renders the voice panel above the prompt, adds `voice` to the footer modes and the Alt+M shortcut to the hint line. |
+| `hooks/register.tsx` | The mod: `/live-voice`, spawns the sidecar, handles its events, submits what was heard, posts replies to `/speak` phrase by phrase as they stream and, in progress verbosity, progress lines to `/narrate`, renders the voice panel above the prompt, adds `voice` to the footer modes and the Alt+M shortcut to the hint line. |
 | `hooks/voice-panel.tsx` | The panel's `Client` module, drawn twice: `head` (animated glyph, state, recording timer) and `meter` (level bars on its own clock). |
 | `hooks/hooks.json` | Lists `register.tsx` as the hooks module. |
 | `types/index.d.ts` | `VoiceStatus`, `VoiceMode`, `VoiceVerbosity`, `VoiceLook`, `VoiceLevels` and the mod's state keys: `status`, `mode`, `muted`, `words`, `levels`, `verbosity`. |
@@ -33,11 +33,15 @@ mic ─► audio.listen ─► echo cancel ─► 16 kHz frames ─► VoiceDete
                                                         │
 register.tsx ◄── stdout JSON lines ─────────────────────┘
    "heard" ─► POST /stop ─► $.prompt.submit (as the user) ─► turn runs
+   turn.step (text chunk, phrase done) ─► POST /speak ─► Speaker (Kokoro) ─► playback
+   turn.step (tool call, answer only, text streamed) ─► POST /stop
    turn.step (tool call, progress) ─► POST /narrate ─► Speaker (Kokoro) ─► playback
-   turn.complete ─► POST /speak ─► Speaker (Kokoro) ─► playback ─► emit "spoken"
+   turn.complete ─► POST /speak (the rest, or the whole answer if none streamed) ─► emit "spoken"
 ```
 
-Speaking while a reply plays stops playback (barge-in), and sending a heard prompt stops any reply still playing. A reply that ends while the person is speaking is not spoken. Saying "stop voice mode" ends it.
+A main-loop step's text is spoken as it streams. The first phrase goes to `/speak` at the first comma, sentence end or line end, or after eight words; each later one at a sentence or line end (`cut`, `PAUSE` and `SENTENCE_END` in `register.tsx`). A cut never falls inside an open ``` code block, so a block is spoken as "Code block omitted." once it closes. Each phrase goes through `speakable` first. At `turn.complete` only the text not yet posted goes to `/speak`, even when it is empty, so the sidecar's `spoken` comes once the whole reply has played; a reply with nothing streamed is posted whole. `spoken` is ignored while the main loop's turn runs, so the panel stays Speaking between phrases.
+
+Speaking while a reply plays stops playback (barge-in), and sending a heard prompt stops any reply still playing. Phrases are held while the person is speaking or recording; a reply that ends while the person is speaking is not spoken. Saying "stop voice mode" ends it.
 
 ## Modes and shortcuts
 
@@ -74,9 +78,9 @@ Buttons: the primary button, Skip (while speaking), the mode button, the verbosi
 
 Voice mode always starts in tap to talk, showing Ready. The sidecar starts with the microphone off; on `ready` the mod posts `/unmute` only when hands-free and not muted. Switching to tap to talk drops any utterance in progress (`/mute`). Switching to hands-free cancels any recording unsent (`/cancel`) and resumes listening (`/unmute`). Ending voice mode resets it to tap to talk.
 
-Skip (band hotkey S while the band has the focus) stops the reply being spoken (`/stop`) and goes back to listening.
+Skip (band hotkey S while the band has the focus) stops the reply being spoken (`/stop`), and the rest of a reply still streaming, and goes back to listening.
 
-The verbosity button switches what is spoken during a turn. Its label names what pressing it switches to: Progress (the default is answer only) or Answer only. In progress verbosity, at each step of the main loop that calls tools, the step's text before its tool calls is spoken; a step with no text speaks a short summary of its tool calls instead, at most one every 5 s (`SUMMARY_MS` in `register.tsx`) and never the same line twice in a row. Nothing is narrated while the person is speaking or recording, or for a turn that is no longer the running one. The panel keeps its thinking-time idle look while progress lines play.
+The verbosity button switches what is spoken during a turn. Its label names what pressing it switches to: Progress (the default is answer only) or Answer only. A step's text streams to `/speak` in both; once the step calls a tool, that text was progress. In answer only, the streamed text is stopped (`/stop`) and the step streams no more. In progress verbosity, at each step of the main loop that calls tools, the step's text before its tool calls is spoken once: the rest of it goes to `/speak` when it had begun streaming, and to `/narrate` when it had not; a step with no text speaks a short summary of its tool calls instead, at most one every 5 s (`SUMMARY_MS` in `register.tsx`) and never the same line twice in a row. Nothing is narrated while the person is speaking or recording, or for a turn that is no longer the running one. The panel shows Speaking from a step's first streamed phrase; once the step calls a tool it goes back to its thinking-time idle look, which it keeps while progress lines play.
 
 | Tool | Summary |
 | --- | --- |
