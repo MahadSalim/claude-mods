@@ -14,7 +14,7 @@ import sounddevice
 
 from live_voice import audio, events
 from live_voice.audio import Segmenter
-from live_voice.config import CHUNK, END_FRAMES, FRAME, MIN_FRAMES, PREROLL_FRAMES, STALL_SECONDS, START_FRAMES
+from live_voice.config import CHUNK, END_FRAMES, FRAME, MIN_FRAMES, PREROLL_FRAMES, SPEECH_FRAMES, STALL_SECONDS, START_FRAMES
 
 
 class Fake:
@@ -74,6 +74,12 @@ class Segmenting(unittest.TestCase):
         heard = PREROLL_FRAMES + 30 - START_FRAMES + END_FRAMES
         self.assertEqual(self.seen, [{"type": "speech"}, {"type": "heard", "text": f"{heard} frames"}])
         self.assertEqual((self.fake.added, self.fake.ends), (heard, 1))
+
+    def test_a_noise_too_short_for_speech_is_heard_empty(self):
+        for speech, heard in ((SPEECH_FRAMES - 1, ""), (SPEECH_FRAMES, f"{START_FRAMES + SPEECH_FRAMES + END_FRAMES} frames")):
+            self.feed(0.9, START_FRAMES + speech)
+            self.feed(0.0, END_FRAMES)
+            self.assertEqual(self.seen[-1], {"type": "heard", "text": heard})
 
     def test_muted_hears_nothing_and_drops_the_utterance(self):
         self.feed(0.9, 10)

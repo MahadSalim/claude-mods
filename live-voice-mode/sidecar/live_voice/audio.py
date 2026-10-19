@@ -22,6 +22,7 @@ from .config import (
     PLAY_RATE,
     PREROLL_FRAMES,
     RATE,
+    SPEECH_FRAMES,
     START_FRAMES,
     STALL_SECONDS,
     START_PROB,
@@ -39,6 +40,7 @@ class Segmenter:
         self.voiced = []
         self.loud = 0
         self.silent = 0
+        self.speech = 0
         self.manual = False
         self.frames = 0
         self.level = [0.0, 0.0]
@@ -49,7 +51,7 @@ class Segmenter:
             self.words.end()
         self.preroll.clear()
         self.recent.clear()
-        self.voiced, self.loud, self.silent, self.manual = [], 0, 0, False
+        self.voiced, self.loud, self.silent, self.speech, self.manual = [], 0, 0, 0, False
 
     def start(self, frames):
         """Begins an utterance with `frames`."""
@@ -107,15 +109,16 @@ class Segmenter:
         self.voiced.append(frame)
         self.words.add(frame)
         self.silent = self.silent + 1 if prob < END_PROB else 0
+        self.speech += prob > START_PROB
 
         if self.silent >= END_FRAMES or len(self.voiced) >= MAX_FRAMES:
             self.finish()
 
     def finish(self):
-        """Ends the utterance, emitting its text as `heard`."""
-        audio = self.voiced
+        """Ends the utterance, emitting its text as `heard`, or no text for a recording under MIN_FRAMES or speech under SPEECH_FRAMES."""
+        audio, noise = self.voiced, len(self.voiced) < MIN_FRAMES if self.manual else self.speech < SPEECH_FRAMES
         self.drop()
-        emit("heard", text=self.transcriber.transcribe(np.concatenate(audio)) if len(audio) >= MIN_FRAMES else "")
+        emit("heard", text="" if noise else self.transcriber.transcribe(np.concatenate(audio)))
 
 
 def listen(transcriber, speaker, words, detector, muted, requests, live):

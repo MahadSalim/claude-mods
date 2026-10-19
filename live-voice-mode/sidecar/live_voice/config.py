@@ -30,6 +30,8 @@ PREROLL_FRAMES = 10
 START_FRAMES = 3
 END_FRAMES = 78
 MIN_FRAMES = 12
+# Frames of speech a hands-free utterance needs after its start to be transcribed; fewer is noise, heard as no text.
+SPEECH_FRAMES = 5
 MAX_FRAMES = 940
 MANUAL_MAX_FRAMES = 3750
 START_PROB = 0.5
