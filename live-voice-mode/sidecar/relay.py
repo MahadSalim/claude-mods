@@ -1,4 +1,4 @@
-"""Live voice relay: one session's link to the shared voice engine, which it starts when none answers.
+"""Live voice relay: one session's link to the shared voice engine, which it starts when none holds the engine's lock.
 
 Writes the engine's JSON event lines on stdout; `loading` while it reconnects after the engine went away once ready, and `end` when the engine quits or does not start.
 """
