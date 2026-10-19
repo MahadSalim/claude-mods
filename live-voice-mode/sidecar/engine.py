@@ -61,8 +61,8 @@ class Engine:
             "/speak": lambda client, body: self.speaker.say(body, client),
             "/narrate": lambda client, body: self.speaker.narrate(body, client),
             "/stop": lambda client, body: self.speaker.stop(client),
-            "/unmute": lambda client, body: self.take(client) or self.muted.clear(),
-            "/talk": lambda client, body: self.take(client) or self.requests.put("talk"),
+            "/unmute": lambda client, body: self.take(client, None),
+            "/talk": lambda client, body: self.take(client, "talk"),
             "/mute": lambda client, body: self.release(client, False),
             "/cancel": lambda client, body: self.release(client, True),
             "/send": lambda client, body: self.owner == client and self.requests.put("send"),
@@ -104,13 +104,17 @@ class Engine:
                     if kind == "heard" and self.muted.is_set():
                         self.owner = None
 
-    def take(self, client):
-        """Gives the microphone to `client`, telling the session that had it and dropping that session's recording."""
+    def take(self, client, request):
+        """Gives the microphone to `client` for `request`, "talk" or None for hands-free, telling the session that had it and dropping its recording or utterance."""
         with self.changing():
             if self.owner not in (None, client):
                 self.tell(self.owner, "taken")
                 self.free()
             self.owner = client
+            if request:
+                self.requests.put(request)
+            else:
+                self.muted.clear()
 
     def release(self, client, recording):
         """Frees the microphone when `client` holds it: ends hands-free, or with `recording` drops its recording."""
@@ -227,14 +231,15 @@ def tray(engine):
         ImageDraw.Draw(image).ellipse((8, 8, 56, 56), fill=color)
         return image
 
+    pictures = {state: picture(color) for state, color in COLORS.items()}
+
     def refresh(icon):
         icon.visible = True
         shown = ""
         while not engine.ending:
-            if label() != shown:
-                shown = label()
-                icon.title = shown
-                icon.icon = picture(COLORS[engine.status()])
+            if (now := label()) != shown:
+                shown = icon.title = now
+                icon.icon = pictures[engine.status()]
                 icon.update_menu()
             engine.changed.wait()
             engine.changed.clear()
@@ -245,7 +250,7 @@ def tray(engine):
         pystray.MenuItem("Restart", lambda: engine.finish("restart")),
         pystray.MenuItem("Quit", lambda: engine.finish("quit")),
     )
-    pystray.Icon("live-voice-engine", picture(COLORS["loading"]), "Voice engine", menu).run(refresh)
+    pystray.Icon("live-voice-engine", pictures["loading"], "Voice engine", menu).run(refresh)
 
     return engine.ending
 
