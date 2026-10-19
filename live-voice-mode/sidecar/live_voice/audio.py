@@ -28,6 +28,96 @@ from .config import (
 from .events import emit
 
 
+class Segmenter:
+    """Cuts 16 kHz frames into utterances, hands-free while `muted` is clear or as a manual recording, emitting speech, level and heard."""
+
+    def __init__(self, transcriber, speaker, words, detector, muted):
+        self.transcriber, self.speaker, self.words, self.detector, self.muted = transcriber, speaker, words, detector, muted
+        self.preroll = collections.deque(maxlen=PREROLL_FRAMES)
+        self.recent = collections.deque(maxlen=BARGE_WINDOW)
+        self.voiced = []
+        self.loud = 0
+        self.silent = 0
+        self.manual = False
+        self.frames = 0
+        self.level = [0.0, 0.0]
+
+    def drop(self):
+        """Forgets the utterance in progress."""
+        if self.voiced:
+            self.words.end()
+        self.preroll.clear()
+        self.recent.clear()
+        self.voiced, self.loud, self.silent, self.manual = [], 0, 0, False
+
+    def start(self, frames):
+        """Begins an utterance with `frames`."""
+        self.voiced = list(frames)
+        emit("speech")
+        for frame in self.voiced:
+            self.words.add(frame)
+
+    def meter(self, frame):
+        """Emits `level` every LEVEL_EVERY frames when the microphone's or the speaker's RMS changed."""
+        self.frames += 1
+        if self.frames % LEVEL_EVERY:
+            return
+        mic = 0.0 if self.muted.is_set() and not self.manual else float(np.sqrt(np.mean(frame**2)))
+        now = [round(value, 3) if value > LEVEL_FLOOR else 0.0 for value in (mic, self.speaker.level)]
+        if now != self.level:
+            self.level = now
+            emit("level", mic=now[0], out=now[1])
+
+    def feed(self, frame, request=None):
+        """Takes one frame and the request ("talk", "send" or "cancel") that came with it, if any."""
+        if request == "talk" and not self.manual:
+            self.speaker.stop()
+            emit("speech")
+            self.manual = True
+        elif request == "cancel" and self.manual:
+            self.words.end()
+            self.voiced, self.manual = [], False
+
+        self.meter(frame)
+
+        if self.manual:
+            self.voiced.append(frame)
+            self.words.add(frame)
+            if request == "send" or len(self.voiced) >= MANUAL_MAX_FRAMES:
+                self.finish()
+            return
+
+        if self.muted.is_set():
+            return self.drop()
+
+        prob = self.detector(frame)
+
+        if not self.voiced:
+            echo = self.speaker.is_echo()
+            self.preroll.append(frame)
+            self.recent.append(prob > BARGE_PROB)
+            self.loud = self.loud + 1 if prob > START_PROB else 0
+
+            if sum(self.recent) >= BARGE_FRAMES if echo else self.loud >= START_FRAMES:
+                if echo:
+                    self.speaker.stop()
+                self.start(self.preroll)
+            return
+
+        self.voiced.append(frame)
+        self.words.add(frame)
+        self.silent = self.silent + 1 if prob < END_PROB else 0
+
+        if self.silent >= END_FRAMES or len(self.voiced) >= MAX_FRAMES:
+            self.finish()
+
+    def finish(self):
+        """Ends the utterance, emitting its text as `heard`."""
+        audio = self.voiced
+        self.drop()
+        emit("heard", text=self.transcriber.transcribe(np.concatenate(audio)) if len(audio) >= MIN_FRAMES else "")
+
+
 def listen(transcriber, speaker, words, detector, muted, requests, live):
     """Plays the speaker's audio, reads the echo-cancelled microphone while `live` is set, and emits each utterance it hears.
 
@@ -39,15 +129,8 @@ def listen(transcriber, speaker, words, detector, muted, requests, live):
     wasapi = next(api for api in sd.query_hostapis() if "WASAPI" in api["name"])
     devices = (wasapi["default_input_device"], wasapi["default_output_device"])
     chunks = queue.Queue()
-    preroll = collections.deque(maxlen=PREROLL_FRAMES)
-    recent = collections.deque(maxlen=BARGE_WINDOW)
+    segmenter = Segmenter(transcriber, speaker, words, detector, muted)
     samples = np.zeros(0, dtype=np.float32)
-    voiced = []
-    loud = 0
-    silent = 0
-    manual = False
-    frames = 0
-    level = [0.0, 0.0]
 
     def on_audio(indata, outdata, *_):
         outdata[:, 0] = speaker.pull(CHUNK)
@@ -63,72 +146,8 @@ def listen(transcriber, speaker, words, detector, muted, requests, live):
         while live.is_set():
             samples = np.concatenate([samples, chunks.get()])
 
-            if len(samples) < FRAME:
-                continue
+            if len(samples) >= FRAME:
+                frame, samples = samples[:FRAME], samples[FRAME:]
+                segmenter.feed(frame, None if requests.empty() else requests.get_nowait())
 
-            frame, samples = samples[:FRAME], samples[FRAME:]
-            request = None if requests.empty() else requests.get_nowait()
-
-            if request == "talk" and not manual:
-                speaker.stop()
-                emit("speech")
-                manual = True
-            elif request == "cancel" and manual:
-                words.end()
-                voiced, manual = [], False
-
-            frames += 1
-            if frames % LEVEL_EVERY == 0:
-                mic = 0.0 if muted.is_set() and not manual else float(np.sqrt(np.mean(frame**2)))
-                now = [round(value, 3) if value > LEVEL_FLOOR else 0.0 for value in (mic, speaker.level)]
-                if now != level:
-                    level = now
-                    emit("level", mic=level[0], out=level[1])
-
-            if muted.is_set() and not manual:
-                if voiced:
-                    words.end()
-                preroll.clear()
-                recent.clear()
-                voiced, loud, silent = [], 0, 0
-                continue
-
-            if manual:
-                voiced.append(frame)
-                words.add(frame)
-
-                if request != "send" and len(voiced) < MANUAL_MAX_FRAMES:
-                    continue
-            else:
-                prob = detector(frame)
-
-                if not voiced:
-                    echo = speaker.is_echo()
-                    preroll.append(frame)
-                    recent.append(prob > BARGE_PROB)
-                    loud = loud + 1 if prob > START_PROB else 0
-
-                    if sum(recent) >= BARGE_FRAMES if echo else loud >= START_FRAMES:
-                        if echo:
-                            speaker.stop()
-                        voiced = list(preroll)
-                        emit("speech")
-                        for early in voiced:
-                            words.add(early)
-                    continue
-
-                voiced.append(frame)
-                words.add(frame)
-                silent = silent + 1 if prob < END_PROB else 0
-
-                if silent < END_FRAMES and len(voiced) < MAX_FRAMES:
-                    continue
-
-            words.end()
-            text = transcriber.transcribe(np.concatenate(voiced)) if len(voiced) >= MIN_FRAMES else ""
-            emit("heard", text=text)
-            preroll.clear()
-            recent.clear()
-            voiced, loud, silent, manual = [], 0, 0, False
-
-    words.end()
+    segmenter.drop()

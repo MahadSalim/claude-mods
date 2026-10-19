@@ -11,6 +11,7 @@ Voice mode for Claude Code, tap to talk or hands-free. `/live-voice` turns it on
 | `hooks/hooks.json` | Lists `register.tsx` as the hooks module. |
 | `types/index.d.ts` | `VoiceStatus`, `VoiceMode`, `VoiceVerbosity`, `VoiceLook`, `VoiceLevels` and the mod's state keys: `status`, `mode`, `muted`, `words`, `levels`, `verbosity`. |
 | `tests/live-voice-mode.test.ts` | Mod tests against a fake relay. |
+| `tests/test_audio.py` | `Segmenter`: hands-free utterances, mute, manual recordings, barge-in, with fakes. |
 | `tests/test_speaker.py` | Speaker queueing, per-session stops, gapless playback and per-session `spoken`, with a fake Kokoro. |
 | `tests/test_engine.py` | Engine routing, the single-instance lock, the relay and per-session `spoken`, with fakes: no models, no audio. |
 | `sidecar/engine.py` | The shared engine, one per machine: loads the models, owns the microphone and speaker, serves every session over localhost HTTP, routes each event to its session, shows the tray icon. |
@@ -22,7 +23,7 @@ Voice mode for Claude Code, tap to talk or hands-free. `/live-voice` turns it on
 | `sidecar/live_voice/transcriber.py` | `Transcriber`: faster-whisper, final text of an utterance and quick partial passes, one pass at a time, both with `HOTWORDS`. |
 | `sidecar/live_voice/live_words.py` | `LiveWords`: back-to-back Whisper partial passes over the utterance so far, partial words while speaking. |
 | `sidecar/live_voice/speaker.py` | `Speaker`: Kokoro TTS into the playback buffer, answers (`say`) and transient progress lines (`narrate`), each of a session; `client` is the session whose line is playing, `level` the RMS of the last chunk played. |
-| `sidecar/live_voice/audio.py` | `listen`: 48 kHz WASAPI duplex stream while any session is connected, WebRTC echo cancellation, utterance segmentation, manual recordings, barge-in, `level` events. |
+| `sidecar/live_voice/audio.py` | `listen`: 48 kHz WASAPI duplex stream while any session is connected, WebRTC echo cancellation; `Segmenter`: utterance segmentation, manual recordings, barge-in, `level` events. |
 | `sidecar/live_voice/server.py` | `serve`: localhost HTTP, POST routes called with the `X-Client` header's session, and `GET /events`, a session's event stream. |
 | `sidecar/requirements.txt` | Sidecar packages, pinned. |
 
