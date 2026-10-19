@@ -38,6 +38,7 @@ class Segmenter:
         self.preroll = collections.deque(maxlen=PREROLL_FRAMES)
         self.recent = collections.deque(maxlen=BARGE_WINDOW)
         self.voiced = []
+        self.added = 0
         self.loud = 0
         self.silent = 0
         self.speech = 0
@@ -51,14 +52,19 @@ class Segmenter:
             self.words.end()
         self.preroll.clear()
         self.recent.clear()
-        self.voiced, self.loud, self.silent, self.speech, self.manual = [], 0, 0, 0, False
+        self.voiced, self.added, self.loud, self.silent, self.speech, self.manual = [], 0, 0, 0, 0, False
 
     def start(self, frames):
         """Begins an utterance with `frames`."""
         self.voiced = list(frames)
         emit("speech")
-        for frame in self.voiced:
+        self.hear()
+
+    def hear(self):
+        """Gives the live words the utterance's frames they do not have yet."""
+        for frame in self.voiced[self.added:]:
             self.words.add(frame)
+        self.added = len(self.voiced)
 
     def meter(self, frame):
         """Emits `level` every LEVEL_EVERY frames when the microphone's or the speaker's RMS changed."""
@@ -84,7 +90,7 @@ class Segmenter:
 
         if self.manual:
             self.voiced.append(frame)
-            self.words.add(frame)
+            self.hear()
             if request == "send" or len(self.voiced) >= MANUAL_MAX_FRAMES:
                 self.finish()
             return
@@ -107,9 +113,10 @@ class Segmenter:
             return
 
         self.voiced.append(frame)
-        self.words.add(frame)
         self.silent = self.silent + 1 if prob < END_PROB else 0
         self.speech += prob > START_PROB
+        if not self.silent:
+            self.hear()
 
         if self.silent >= END_FRAMES or len(self.voiced) >= MAX_FRAMES:
             self.finish()

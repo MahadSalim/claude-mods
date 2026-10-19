@@ -73,7 +73,14 @@ class Segmenting(unittest.TestCase):
         self.feed(0.0, END_FRAMES)
         heard = PREROLL_FRAMES + 30 - START_FRAMES + END_FRAMES
         self.assertEqual(self.seen, [{"type": "speech"}, {"type": "heard", "text": f"{heard} frames"}])
-        self.assertEqual((self.fake.added, self.fake.ends), (heard, 1))
+        self.assertEqual((self.fake.added, self.fake.ends), (heard - END_FRAMES, 1))
+
+    def test_the_live_words_get_a_pause_only_once_speech_resumes(self):
+        self.feed(0.9, 20)
+        self.feed(0.0, 10)
+        self.assertEqual(self.fake.added, 20)
+        self.feed(0.9, 1)
+        self.assertEqual(self.fake.added, 31)
 
     def test_a_noise_too_short_for_speech_is_heard_empty(self):
         for speech, heard in ((SPEECH_FRAMES - 1, ""), (SPEECH_FRAMES, f"{START_FRAMES + SPEECH_FRAMES + END_FRAMES} frames")):
