@@ -11,6 +11,7 @@ Voice mode for Claude Code, tap to talk or hands-free. `/live-voice` turns it on
 | `hooks/hooks.json` | Lists `register.tsx` as the hooks module. |
 | `types/index.d.ts` | `VoiceStatus`, `VoiceMode`, `VoiceVerbosity`, `VoiceLook`, `VoiceLevels` and the mod's state keys: `status`, `mode`, `muted`, `words`, `levels`, `verbosity`. |
 | `tests/live-voice-mode.test.ts` | Mod tests against a fake relay. |
+| `tests/test_speaker.py` | Speaker queueing, per-session stops, gapless playback and per-session `spoken`, with a fake Kokoro. |
 | `tests/test_engine.py` | Engine routing, the single-instance lock, the relay and per-session `spoken`, with fakes: no models, no audio. |
 | `sidecar/engine.py` | The shared engine, one per machine: loads the models, owns the microphone and speaker, serves every session over localhost HTTP, routes each event to its session, shows the tray icon. |
 | `sidecar/relay.py` | One session's link to the engine, stdlib only: starts the engine when none answers, holds its event stream, writes the events on stdout, and dies with the session. |
@@ -137,7 +138,7 @@ Each model sits behind one object in one module; `Engine.run` in `sidecar/engine
 
 - Final transcript: `Transcriber(path)` with `.device`, `.transcribe(audio) -> str` and `.partial(audio) -> str`, in `transcriber.py`.
 - Live words: `LiveWords(transcriber)` with `.add(frame)` per 16 kHz float32 frame and `.end()` per utterance, emitting `partial` from the shared `Transcriber`'s `.partial`, in `live_words.py`; no `partial` for an utterance is emitted once its `.end()` returns.
-- Voice: `Speaker(folder)` with `.say(text, client)`, `.narrate(text, client)`, `.client`, `.busy`, `.stop()`, `.is_echo()`, `.pull(count)`, `.level`, emitting `spoken`, in `speaker.py`.
+- Voice: `Speaker(folder)` with `.say(text, client)`, `.narrate(text, client)`, `.client`, `.busy`, `.stop(client=None)` (every session's speech, or one session's), `.is_echo()`, `.pull(count)`, `.level`, emitting `spoken`, in `speaker.py`.
 - VAD: `VoiceDetector()` called with a frame, returning a probability, in `detector.py`.
 
 Point the model folder in `config.py` at the new model, keep the interface, and change only that module. Constructor arguments are set in `engine.py`. `register.tsx` holds only the venv's Python path. A running engine keeps the old code until the tray's Restart.

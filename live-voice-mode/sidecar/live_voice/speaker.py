@@ -1,5 +1,6 @@
 """Kokoro text to speech into the buffer the audio stream plays."""
 
+import itertools
 import os
 import queue
 import re
@@ -30,8 +31,9 @@ class Speaker:
         self.lines = queue.Queue()
         self.pending = np.zeros(0, dtype=np.int16)
         self.lock = threading.Lock()
-        self.generation = 0
-        self.answers = 0
+        self.serials = itertools.count(1)
+        self.answered = 0
+        self.stopped = {}
         self.busy = threading.Event()
         self.quiet_since = 0.0
         self.level = 0.0
@@ -40,23 +42,28 @@ class Speaker:
 
     def say(self, text, client=None):
         """Queues an answer of `client` after the speech playing and drops every progress line not yet started."""
-        self.answers += 1
-        self.lines.put((self.generation, self.answers, None, text, client))
+        self.answered = next(self.serials)
+        self.lines.put((self.answered, None, text, client))
 
     def narrate(self, text, client=None):
         """Queues a progress line of `client`, dropped by a later answer or stop, or once older than NARRATE_SECONDS."""
-        self.lines.put((self.generation, self.answers, time.monotonic(), text, client))
+        self.lines.put((next(self.serials), time.monotonic(), text, client))
 
     def follows(self, client):
         """Whether the next queued line is `client`'s."""
         with self.lines.mutex:
             return bool(self.lines.queue) and self.lines.queue[0][-1] == client
 
-    def stop(self):
-        """Drops what is playing and every line said before it."""
+    def stop(self, client=None):
+        """Drops every line queued before now and the one playing: all of them, or with `client` only that session's."""
         with self.lock:
-            self.generation += 1
-            self.pending = self.pending[:0]
+            self.stopped[client] = next(self.serials)
+            if client in (None, self.client):
+                self.pending = self.pending[:0]
+
+    def cut(self, serial, client):
+        """Whether a stop dropped `client`'s line `serial`."""
+        return serial < max(self.stopped.get(None, 0), self.stopped.get(client, 0))
 
     def is_echo(self):
         return self.busy.is_set() or time.monotonic() - self.quiet_since < ECHO_SECONDS
@@ -70,28 +77,28 @@ class Speaker:
 
     def run(self):
         while True:
-            generation, answers, queued, text, self.client = self.lines.get()
+            serial, queued, text, client = self.lines.get()
+            self.client = client
             narration = queued is not None
-            if narration and (answers != self.answers or time.monotonic() - queued > NARRATE_SECONDS):
-                generation = None
+            stale = narration and (serial < self.answered or time.monotonic() - queued > NARRATE_SECONDS)
             self.busy.set()
 
             for sentence in filter(None, SENTENCE_END.split(text)):
-                if generation != self.generation:
+                if stale or self.cut(serial, client):
                     break
 
                 audio, rate = self.kokoro.create(sentence, voice=VOICE, lang="en-us")
 
                 with self.lock:
-                    if generation != self.generation:
+                    if self.cut(serial, client):
                         break
                     self.pending = np.concatenate([self.pending, to_pcm(audio, rate)])
 
-            while len(self.pending) and generation == self.generation and not self.follows(self.client):
+            while len(self.pending) and not stale and not self.cut(serial, client) and not self.follows(client):
                 time.sleep(0.05)
 
             if self.lines.empty():
                 self.quiet_since = time.monotonic()
                 self.busy.clear()
-            if not narration and not self.follows(self.client):
+            if not narration and serial > self.stopped.get(client, 0) and not self.follows(client):
                 emit("spoken")
