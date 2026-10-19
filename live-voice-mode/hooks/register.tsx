@@ -76,13 +76,13 @@ const speakable = (text: string) =>
     .replace(/\s+/g, ' ')
     .trim()
 
-/** A sentence or line end, and for a step's first phrase also a comma or its first eight words. */
+/** A sentence or line end, and for a step's first phrase in progress verbosity also a comma or its first eight words. */
 const SENTENCE_END = /[.!?]\s|\n/g
 const PAUSE = /[,.!?]\s|\n|^(\S+\s+){8}/g
 
-/** How much of `text` makes whole phrases: up to its last pause outside a code block, 0 when none. */
-const cut = (text: string, first: boolean) =>
-  Math.max(0, ...[...text.matchAll(first ? PAUSE : SENTENCE_END)].map(match => match.index + match[0].length).filter(end => text.slice(0, end).split('```').length % 2))
+/** How much of `text` makes whole phrases: up to its last `pause` outside a code block, 0 when none. */
+const cut = (text: string, pause: RegExp) =>
+  Math.max(0, ...[...text.matchAll(pause)].map(match => match.index + match[0].length).filter(end => text.slice(0, end).split('```').length % 2))
 
 const setStatus = ($: EngineInterface, next: VoiceStatus) => update($, status, () => next)
 
@@ -390,7 +390,7 @@ export const register: Register = on => {
 
       if (chunk.kind === 'text') {
         said.text += chunk.text
-        await utter($, e.turnId, cut(said.text.slice(said.sent), !said.sent))
+        await utter($, e.turnId, cut(said.text.slice(said.sent), !said.sent && (await read($, verbosity)) === 'progress' ? PAUSE : SENTENCE_END))
       } else if (chunk.kind === 'tool' && !spoke && speakable(said.text)) {
         spoke = true
 

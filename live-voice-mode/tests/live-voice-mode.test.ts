@@ -486,40 +486,46 @@ test('nothing is narrated in answer only, for a stale turn, or while hearing', {
 /** Ends turn t1 with `answer`. */
 const answered = ($: Engine, answer: string) => $.turn.complete({ turnId: 't1', reason: 'answer', answer, durationMs: 1, isAborted: false })
 
-test('a reply is spoken phrase by phrase as it streams, the first at a comma, and only its rest at the end', { timeoutMs: 30000 }, async ($, on) => {
+test('a reply is spoken sentence by sentence as it streams, and only its rest at the end', { timeoutMs: 30000 }, async ($, on) => {
   const { spoken, band, step, close } = await startTurn($, on, true)
 
   await step(['Sure, here', ' it is. The file has', ' three parts. Done'], [])
-  expect(bodies(spoken, '/speak')).toEqual(['Sure,', 'here it is.', 'The file has three parts.'])
+  expect(bodies(spoken, '/speak')).toEqual(['Sure, here it is.', 'The file has three parts.'])
   expect(await head(band)).toBe('SPEAKING')
 
   await answered($, 'Sure, here it is. The file has three parts. Done')
-  expect(bodies(spoken, '/speak')).toEqual(['Sure,', 'here it is.', 'The file has three parts.', 'Done'])
+  expect(bodies(spoken, '/speak')).toEqual(['Sure, here it is.', 'The file has three parts.', 'Done'])
   await close()
 })
 
-test('a first phrase with no pause comes at eight words, and a code block only once it closes', { timeoutMs: 30000 }, async ($, on) => {
-  const { spoken, step, close } = await startTurn($, on, true)
+test('in progress, a first phrase comes at a comma or eight words, and a code block only once it closes', { timeoutMs: 30000 }, async ($, on) => {
+  const { spoken, step, close } = await startTurn($, on)
 
+  await step(['Sure, here', ' it is. '], [])
+  await answered($, 'Sure, here it is.')
+  await $.turn.start({ turnId: 't1', text: 'go' })
   await step(['one two three four five six seven eight nine ten'], [])
   await answered($, 'one two three four five six seven eight nine ten')
   await $.turn.start({ turnId: 't1', text: 'go' })
   await step(['Here, run:\n```', 'sh\nnpm test\n', '```\nThat is it. '], [])
   await answered($, 'Here, run:\n```sh\nnpm test\n```\nThat is it.')
-  expect(bodies(spoken, '/speak')).toEqual(['one two three four five six seven eight', 'nine ten', 'Here, run:', 'That is it.', ''])
+  expect(bodies(spoken, '/speak')).toEqual(['Sure,', 'here it is.', '', 'one two three four five six seven eight', 'nine ten', 'Here, run:', 'That is it.', ''])
   await close()
 })
 
-test('in answer only, text streamed before a tool call is stopped and the answer still spoken', { timeoutMs: 30000 }, async ($, on) => {
+test('in answer only, a sentence before a tool call is not spoken, more is stopped, and the answer still spoken', { timeoutMs: 30000 }, async ($, on) => {
   const { spoken, band, step, close } = await startTurn($, on, true)
 
-  await step(['Let me look, then fix it.'], [use('Read', { file_path: 'a.ts' })])
-  expect(spoken.slice(-2)).toEqual(['http://127.0.0.1:4321/speak Let me look,', 'http://127.0.0.1:4321/stop '])
+  await step(['Let me look, then', ' fix it.'], [use('Read', { file_path: 'a.ts' })])
+  expect(spoken).toEqual([])
+
+  await step(['First this. Then', ' that.'], [use('Read', { file_path: 'a.ts' })])
+  expect(spoken).toEqual(['http://127.0.0.1:4321/speak First this.', 'http://127.0.0.1:4321/stop '])
   expect(await head(band)).toBe('READY')
 
   await step(['Fixed.'], [])
   await answered($, 'Fixed.')
-  expect(bodies(spoken, '/speak')).toEqual(['Let me look,', 'Fixed.'])
+  expect(bodies(spoken, '/speak')).toEqual(['First this.', 'Fixed.'])
   await close()
 })
 
@@ -536,11 +542,11 @@ test('in progress, text streamed before a tool call is spoken once, whole', { ti
 test('Skip ends the rest of a streaming reply', { timeoutMs: 30000 }, async ($, on) => {
   const { spoken, band, step, close } = await startTurn($, on, true)
 
-  await step(['Sure, here it is.'], [])
+  await step(['Sure, here it is. Then'], [])
   await band.press({ key: 'voice-skip' })
   expect([await head(band), (await panel(band)).hint]).toEqual(['READY', 'press Talk to interrupt'])
-  await answered($, 'Sure, here it is.')
-  expect(bodies(spoken, '/speak')).toEqual(['Sure,'])
+  await answered($, 'Sure, here it is. Then')
+  expect(bodies(spoken, '/speak')).toEqual(['Sure, here it is.'])
   expect(await head(band)).toBe('READY')
   await close()
 })
