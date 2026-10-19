@@ -552,8 +552,18 @@ test('Skip ends the rest of a streaming reply', { timeoutMs: 30000 }, async ($, 
 })
 
 test('the panel stays speaking between streamed phrases until the whole reply is spoken', { timeoutMs: 30000 }, async ($, on) => {
-  const gates = [gate(), gate(), gate()] as const
-  const { spoken } = world(on, [line({ type: 'ready', port: 4321, device: 'cuda' }), line({ type: 'spoken' }), line({ type: 'spoken' }), line({ type: 'log', text: 'end' })], ...gates.map(gate => gate.opened))
+  const gates = [gate(), gate(), gate(), gate()] as const
+  const { spoken } = world(
+    on,
+    [
+      line({ type: 'ready', port: 4321, device: 'cuda' }),
+      line({ type: 'spoken', lines: 1 }),
+      line({ type: 'spoken', lines: 1 }),
+      line({ type: 'spoken', lines: 2 }),
+      line({ type: 'log', text: 'end' }),
+    ],
+    ...gates.map(gate => gate.opened),
+  )
   const run = stepper(on)
 
   await $.command.run({ command: 'live-voice', args: '' } as never)
@@ -569,10 +579,14 @@ test('the panel stays speaking between streamed phrases until the whole reply is
   expect(await head(band)).toBe('SPEAKING')
 
   await gates[1].open()
+  expect(await head(band)).toBe('SPEAKING')
+
+  await gates[2].open()
   expect(await head(band)).toBe('READY')
   await band.unmount()
-  await gates[2].open()
+  await gates[3].open()
 })
+
 test('voice mode runs the relay and sends each request as the client it reports', { timeoutMs: 30000 }, async ($, on) => {
   const closing = gate()
   const { argv, spoken, clients } = world(on, [line({ type: 'ready', port: 4321, device: 'cuda', client: '7' }), line({ type: 'log', text: 'end' })], closing.opened)

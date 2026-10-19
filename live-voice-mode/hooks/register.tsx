@@ -48,14 +48,14 @@ type SidecarEvent =
   | { type: 'speech' }
   | { type: 'partial'; text: string }
   | { type: 'heard'; text: string }
-  | { type: 'spoken' }
+  | { type: 'spoken'; lines?: number }
   | { type: 'level'; mic: number; out: number }
   | { type: 'log'; text: string }
 
 type Sidecar = HookStream<ProcessSpawnChunk, ProcessSpawnResult>
 
-/** The running relay, the engine's HTTP port and this session's client id there, all unset while voice mode is off, and the main loop's running turn. */
-const live: { sidecar?: Sidecar; port?: number; client?: string; turnId?: string } = {}
+/** The running relay, the engine's HTTP port and this session's client id there, all unset while voice mode is off, the /speak lines posted as that client, and the main loop's running turn. */
+const live: { sidecar?: Sidecar; port?: number; client?: string; lines: number; turnId?: string } = { lines: 0 }
 
 /** Surfaces where a panel Client failed. */
 const faulted = new Set<string>()
@@ -104,6 +104,16 @@ const post = async ($: EngineInterface, path: string, body = '') => {
   }
 }
 
+/** Shows Speaking and posts `text` to /speak, counted in live.lines. */
+const speak = async ($: EngineInterface, text: string) => {
+  live.lines += 1
+  await setStatus($, 'speaking')
+  await post($, '/speak', text).catch(error => {
+    live.lines -= 1
+    $.ui.log(`Voice speech failed: ${error}`, { to: 'debug' })
+  })
+}
+
 /** The last progress line spoken, and when the last tool summary was. */
 const told = { line: '', at: -Infinity }
 
@@ -122,8 +132,7 @@ const utter = async ($: EngineInterface, turnId: string, end: number) => {
   }
 
   said.sent += end
-  await setStatus($, 'speaking')
-  await post($, '/speak', text).catch(error => $.ui.log(`Voice speech failed: ${error}`, { to: 'debug' }))
+  await speak($, text)
 }
 
 /** A tool use as its spoken verb and, for a file tool, the file's name without its extensions. */
@@ -270,6 +279,7 @@ const handle = async ($: EngineInterface, event: SidecarEvent) => {
       }
       live.port = event.port
       live.client = event.client
+      live.lines = 0
       if (!(await read($, muted)) && (await read($, mode)) === 'handsFree') {
         await post($, '/unmute')
       }
@@ -306,7 +316,7 @@ const handle = async ($: EngineInterface, event: SidecarEvent) => {
       void send($, event.text)
       return
     case 'spoken':
-      return live.turnId === undefined ? quiet($, 'listening') : undefined
+      return live.turnId === undefined && (event.lines ?? live.lines) >= live.lines ? quiet($, 'listening') : undefined
     case 'level':
       return update($, levels, () => ({ mic: event.mic, out: event.out }))
     case 'log':
@@ -439,8 +449,7 @@ export const register: Register = on => {
     const text = going ? speakable(said.sent ? said.text.slice(said.sent) : e.answer) : ''
 
     if (text || (going && said.sent)) {
-      await setStatus($, 'speaking')
-      await post($, '/speak', text)
+      await speak($, text)
     } else {
       await setStatus($, idle())
     }
