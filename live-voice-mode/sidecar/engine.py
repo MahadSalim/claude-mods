@@ -109,18 +109,20 @@ class Engine:
         with self.changing():
             if self.owner not in (None, client):
                 self.tell(self.owner, "taken")
-                self.muted.set()
-                self.requests.put("cancel")
-                self.hearer = None
+                self.free()
             self.owner = client
 
     def release(self, client, recording):
         """Frees the microphone when `client` holds it: ends hands-free, or with `recording` drops its recording."""
         with self.changing():
             if self.owner == client and recording == self.muted.is_set():
-                self.muted.set()
-                self.requests.put("cancel")
-                self.owner = None
+                self.free()
+
+    def free(self):
+        """Mutes the microphone, drops its recording or utterance and frees it, under the lock."""
+        self.muted.set()
+        self.requests.put("cancel")
+        self.owner = self.hearer = None
 
     def hello(self, client):
         self.tell(client, "ready", port=self.port, device=self.device, client=client)
@@ -160,8 +162,7 @@ class Engine:
         with self.changing():
             del self.clients[client]
             if self.owner == client:
-                self.muted.set()
-                self.owner = None
+                self.free()
             if not self.clients:
                 self.present.clear()
                 with self.requests.mutex:

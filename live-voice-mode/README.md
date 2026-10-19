@@ -70,7 +70,7 @@ Routing between sessions:
 | `log` | Every session, and `engine.log`. |
 | `taken` | The session that held the microphone, when another takes it. |
 
-One session holds the microphone at a time. `/unmute` (hands-free) and `/talk` (a tap-to-talk recording) take it; the session that had it gets `taken` and its recording or utterance is dropped, and its panel goes back to tap to talk, Ready, with a toast. `/mute` frees it when its session is hands-free, `/cancel` when its session is recording, and a recording frees it once `heard` is sent; `/mute`, `/send` and `/cancel` from any other session do nothing. A session that disconnects frees the microphone and stops its speech playing. `/speak` and `/narrate` queue speech of the posting session; `/stop` from any session stops all speech, since there is one voice.
+One session holds the microphone at a time. `/unmute` (hands-free) and `/talk` (a tap-to-talk recording) take it; the session that had it gets `taken` and its recording or utterance is dropped, and its panel goes back to tap to talk, Ready, with a toast. `/mute` frees it when its session is hands-free, `/cancel` when its session is recording, and a recording frees it once `heard` is sent; `/mute`, `/send` and `/cancel` from any other session do nothing. A session that disconnects frees the microphone, dropping its recording or utterance, and stops its speech playing. `/speak` and `/narrate` queue speech of the posting session; `/stop` from any session stops all speech, since there is one voice.
 
 ## Modes and shortcuts
 

@@ -116,6 +116,7 @@ class Routing(unittest.TestCase):
 
         b.close()
         self.assertTrue(settle(lambda: engine.owner is None and engine.muted.is_set()))
+        self.assertEqual(list(engine.requests.queue), ["cancel", "cancel"])
         self.assertTrue(engine.present.is_set())
         a.close()
         self.assertTrue(settle(lambda: not engine.present.is_set()))
