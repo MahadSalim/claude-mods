@@ -11,12 +11,13 @@ Voice mode for Claude Code, tap to talk or hands-free. `/live-voice` turns it on
 | `hooks/hooks.json` | Lists `register.tsx` as the hooks module. |
 | `types/index.d.ts` | `VoiceStatus`, `VoiceMode`, `VoiceVerbosity`, `VoiceLook`, `VoiceLevels` and the mod's state keys: `status`, `mode`, `muted`, `words`, `levels`, `verbosity`. |
 | `tests/live-voice-mode.test.ts` | Mod tests against a fake relay. |
+| `tests/test_live_words.py` | `LiveWords`: no partial after an utterance ends, when the words read as finished, with a fake transcriber. |
 | `tests/test_audio.py` | `Segmenter`: hands-free utterances, mute, manual recordings, barge-in, with fakes. |
 | `tests/test_speaker.py` | Speaker queueing, per-session stops, gapless playback and per-session `spoken`, with a fake Kokoro. |
 | `tests/test_engine.py` | Engine routing, the single-instance lock, the relay and per-session `spoken`, with fakes: no models, no audio. |
 | `sidecar/engine.py` | The shared engine, one per machine: loads the models, owns the microphone and speaker, serves every session over localhost HTTP, routes each event to its session, shows the tray icon. |
 | `sidecar/relay.py` | One session's link to the engine, stdlib only: starts the engine when none answers, holds its event stream, writes the events on stdout, and dies with the session. |
-| `sidecar/live_voice/config.py` | Sidecar settings: model folders, voice, `HOTWORDS` (words Whisper is biased towards: Claude, Claude Code), the engine's lock, state and log files, `LOCK_SECONDS`/`START_SECONDS`, sample rates, `STALL_SECONDS` (2 s without audio reopens the stream), VAD thresholds and frame counts, including `END_FRAMES` (2.5 s of silence ends a hands-free utterance), `SPEECH_FRAMES` (a hands-free utterance with under 5 speech frames, 160 ms, after its start is noise: heard as no text, not transcribed), `MANUAL_MAX_FRAMES` (2 min cap on a tap-to-talk recording), `LEVEL_EVERY`/`LEVEL_FLOOR` (level events), and `NARRATE_SECONDS` (4 s: a progress line still waiting that long is dropped). |
+| `sidecar/live_voice/config.py` | Sidecar settings: model folders, voice, `HOTWORDS` (words Whisper is biased towards: Claude, Claude Code), the engine's lock, state and log files, `LOCK_SECONDS`/`START_SECONDS`, sample rates, `STALL_SECONDS` (2 s without audio reopens the stream), VAD thresholds and frame counts, including `END_FRAMES` (2.5 s of silence ends a hands-free utterance), `QUICK_END_FRAMES` (1 s of silence ends it once its live words read as finished: they cover all its speech and end in `.`, `!` or `?`, not an ellipsis or an `UNFINISHED` word such as `and.`), `SPEECH_FRAMES` (a hands-free utterance with under 5 speech frames, 160 ms, after its start is noise: heard as no text, not transcribed), `MANUAL_MAX_FRAMES` (2 min cap on a tap-to-talk recording), `LEVEL_EVERY`/`LEVEL_FLOOR` (level events), and `NARRATE_SECONDS` (4 s: a progress line still waiting that long is dropped). |
 | `sidecar/live_voice/events.py` | `emit`: one event, handed to `route` when set (the engine's router) or written as one JSON line on stdout (the relay). |
 | `sidecar/live_voice/launch.py` | `start`: a process detached, windowless and out of every job object, or through WMI `Win32_Process.Create` when it stays in one. |
 | `sidecar/live_voice/detector.py` | `VoiceDetector`: Silero VAD, speech probability per frame. |
@@ -138,7 +139,7 @@ HTTP, each POST with the session's `X-Client` header: `GET /events` (the session
 Each model sits behind one object in one module; `Engine.run` in `sidecar/engine.py` wires them together.
 
 - Final transcript: `Transcriber(path)` with `.device`, `.transcribe(audio) -> str` and `.partial(audio) -> str`, in `transcriber.py`.
-- Live words: `LiveWords(transcriber)` with `.add(frame)` per 16 kHz float32 frame and `.end()` per utterance, emitting `partial` from the shared `Transcriber`'s `.partial`, in `live_words.py`; no `partial` for an utterance is emitted once its `.end()` returns.
+- Live words: `LiveWords(transcriber)` with `.add(frame)` per 16 kHz float32 frame, `.end()` per utterance and `.finished(count)` (the latest partial covers the first `count` frames and reads as a finished sentence), emitting `partial` from the shared `Transcriber`'s `.partial`, in `live_words.py`; no `partial` for an utterance is emitted once its `.end()` returns.
 - Voice: `Speaker(folder)` with `.say(text, client)`, `.narrate(text, client)`, `.client`, `.busy`, `.stop(client=None)` (every session's speech, or one session's), `.is_echo()`, `.pull(count)`, `.level`, emitting `spoken`, in `speaker.py`.
 - VAD: `VoiceDetector()` called with a frame, returning a probability, in `detector.py`.
 

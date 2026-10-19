@@ -1,11 +1,16 @@
 """Live partial words while an utterance is still being spoken."""
 
 import queue
+import re
 import threading
 
 import numpy as np
 
+from .config import UNFINISHED
 from .events import emit
+
+FINISHED = re.compile(r"[.!?]$")
+TRAILING = re.compile(rf"(\.\.|…|\b(?:{UNFINISHED})\.)$", re.IGNORECASE)
 
 
 class LiveWords:
@@ -15,6 +20,7 @@ class LiveWords:
         self.transcriber = transcriber
         self.frames = queue.Queue()
         self.utterance = 0
+        self.heard = (0, "")
         self.ending = threading.Lock()
         threading.Thread(target=self.run, daemon=True).start()
 
@@ -25,7 +31,13 @@ class LiveWords:
         """Ends the utterance; no partial for it is emitted once this returns."""
         with self.ending:
             self.utterance += 1
+            self.heard = (0, "")
         self.frames.put((self.utterance, None))
+
+    def finished(self, count):
+        """Whether the latest partial of the utterance covers its first `count` frames and ends a sentence, not with an ellipsis or an UNFINISHED word."""
+        covered, text = self.heard
+        return covered >= count and bool(FINISHED.search(text)) and not TRAILING.search(text)
 
     def take(self):
         """Waits for the next queued item and returns it with every other item already queued."""
@@ -48,4 +60,5 @@ class LiveWords:
                 text = self.transcriber.partial(np.concatenate(audio))
                 with self.ending:
                     if utterance == self.utterance:
+                        self.heard = (len(audio), text)
                         emit("partial", text=text)

@@ -21,6 +21,7 @@ from .config import (
     MIN_FRAMES,
     PLAY_RATE,
     PREROLL_FRAMES,
+    QUICK_END_FRAMES,
     RATE,
     SPEECH_FRAMES,
     START_FRAMES,
@@ -118,7 +119,8 @@ class Segmenter:
         if not self.silent:
             self.hear()
 
-        if self.silent >= END_FRAMES or len(self.voiced) >= MAX_FRAMES:
+        quiet = self.silent >= END_FRAMES or self.silent >= QUICK_END_FRAMES and self.words.finished(self.added)
+        if quiet or len(self.voiced) >= MAX_FRAMES:
             self.finish()
 
     def finish(self):

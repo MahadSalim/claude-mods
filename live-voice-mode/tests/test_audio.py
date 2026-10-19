@@ -14,7 +14,7 @@ import sounddevice
 
 from live_voice import audio, events
 from live_voice.audio import Segmenter
-from live_voice.config import CHUNK, END_FRAMES, FRAME, MIN_FRAMES, PREROLL_FRAMES, SPEECH_FRAMES, STALL_SECONDS, START_FRAMES
+from live_voice.config import CHUNK, END_FRAMES, QUICK_END_FRAMES, FRAME, MIN_FRAMES, PREROLL_FRAMES, SPEECH_FRAMES, STALL_SECONDS, START_FRAMES
 
 
 class Fake:
@@ -27,6 +27,7 @@ class Fake:
         self.added = 0
         self.ends = 0
         self.echo = False
+        self.done = False
 
     def stop(self, client=None):
         self.stops += 1
@@ -42,6 +43,9 @@ class Fake:
 
     def end(self):
         self.ends += 1
+
+    def finished(self, count):
+        return self.done and count == self.added
 
     def __call__(self, frame):
         return float(frame[0])
@@ -74,6 +78,14 @@ class Segmenting(unittest.TestCase):
         heard = PREROLL_FRAMES + 30 - START_FRAMES + END_FRAMES
         self.assertEqual(self.seen, [{"type": "speech"}, {"type": "heard", "text": f"{heard} frames"}])
         self.assertEqual((self.fake.added, self.fake.ends), (heard - END_FRAMES, 1))
+
+    def test_finished_words_end_an_utterance_after_a_shorter_silence(self):
+        self.feed(0.9, 20)
+        self.feed(0.0, QUICK_END_FRAMES)
+        self.assertEqual(self.seen, [{"type": "speech"}])
+        self.fake.done = True
+        self.feed(0.0, 1)
+        self.assertEqual(self.seen[-1], {"type": "heard", "text": f"{20 + QUICK_END_FRAMES + 1} frames"})
 
     def test_the_live_words_get_a_pause_only_once_speech_resumes(self):
         self.feed(0.9, 20)

@@ -29,6 +29,10 @@ STALL_SECONDS = 2.0
 PREROLL_FRAMES = 10
 START_FRAMES = 3
 END_FRAMES = 78
+# Silence that ends a hands-free utterance once its live words read as finished; END_FRAMES or more turns it off.
+QUICK_END_FRAMES = 31
+# Last words that leave a sentence unfinished however Whisper punctuates it, as a regex alternation.
+UNFINISHED = "and|but|or|because|the|a|an|to|of|with|for|um|uh|if"
 MIN_FRAMES = 12
 # Frames of speech a hands-free utterance needs after its start to be transcribed; fewer is noise, heard as no text.
 SPEECH_FRAMES = 5
