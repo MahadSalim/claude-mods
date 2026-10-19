@@ -31,7 +31,7 @@ class FakeSpeaker:
     def __init__(self):
         self.client = None
         self.said = []
-        self.stops = 0
+        self.stops = []
         self.busy = threading.Event()
 
     def say(self, text, client=None):
@@ -39,8 +39,8 @@ class FakeSpeaker:
 
     narrate = say
 
-    def stop(self):
-        self.stops += 1
+    def stop(self, client=None):
+        self.stops.append(client)
 
 
 def fresh():
@@ -106,7 +106,8 @@ class Routing(unittest.TestCase):
         self.assertEqual((engine.owner, engine.muted.is_set()), (second, False))
 
         post(engine, first, "/speak", "hello")
-        self.assertEqual(engine.speaker.said, [("hello", first)])
+        post(engine, first, "/stop")
+        self.assertEqual((engine.speaker.said, engine.speaker.stops), ([("hello", first)], [first]))
         engine.speaker.client = first
         events.emit("speech")
         events.emit("level", mic=0.1, out=0.2)
@@ -120,7 +121,7 @@ class Routing(unittest.TestCase):
         self.assertTrue(engine.present.is_set())
         a.close()
         self.assertTrue(settle(lambda: not engine.present.is_set()))
-        self.assertEqual(engine.speaker.stops, 1)
+        self.assertEqual(engine.speaker.stops, [first, second, first])
 
     def test_a_recording_frees_the_microphone_once_heard_and_a_taken_one_is_dropped(self):
         engine, _ = started()

@@ -46,7 +46,7 @@ relay.py ── stdout JSON lines ─► register.tsx
 
 A main-loop step's text is spoken as it streams. The first phrase goes to `/speak` at the first comma, sentence end or line end, or after eight words; each later one at a sentence or line end (`cut`, `PAUSE` and `SENTENCE_END` in `register.tsx`). A cut never falls inside an open ``` code block, and `speakable` drops a block whole, so nothing of it is spoken. Each phrase goes through `speakable` first. At `turn.complete` only the text not yet posted goes to `/speak`, even when it is empty, so the engine's `spoken` comes once the whole reply has played; a reply with nothing streamed is posted whole. `spoken` is ignored while the main loop's turn runs, so the panel stays Speaking between phrases.
 
-Speaking while a reply plays stops playback (barge-in), and sending a heard prompt stops any reply still playing. Phrases are held while the person is speaking or recording; a reply that ends while the person is speaking is not spoken. Saying "stop voice mode" ends it.
+Speaking while a reply plays stops playback (barge-in), and sending a heard prompt stops the session's reply still playing. Phrases are held while the person is speaking or recording; a reply that ends while the person is speaking is not spoken. Saying "stop voice mode" ends it.
 
 ## Shared engine
 
@@ -70,7 +70,7 @@ Routing between sessions:
 | `log` | Every session, and `engine.log`. |
 | `taken` | The session that held the microphone, when another takes it. |
 
-One session holds the microphone at a time. `/unmute` (hands-free) and `/talk` (a tap-to-talk recording) take it; the session that had it gets `taken` and its recording or utterance is dropped, and its panel goes back to tap to talk, Ready, with a toast. `/mute` frees it when its session is hands-free, `/cancel` when its session is recording, and a recording frees it once `heard` is sent; `/mute`, `/send` and `/cancel` from any other session do nothing. A session that disconnects frees the microphone, dropping its recording or utterance, and stops its speech playing. `/speak` and `/narrate` queue speech of the posting session; `/stop` from any session stops all speech, since there is one voice.
+One session holds the microphone at a time. `/unmute` (hands-free) and `/talk` (a tap-to-talk recording) take it; the session that had it gets `taken` and its recording or utterance is dropped, and its panel goes back to tap to talk, Ready, with a toast. `/mute` frees it when its session is hands-free, `/cancel` when its session is recording, and a recording frees it once `heard` is sent; `/mute`, `/send` and `/cancel` from any other session do nothing. A session that disconnects frees the microphone, dropping its recording or utterance, and stops its speech playing. `/speak` and `/narrate` queue speech of the posting session; `/stop` stops only the posting session's speech, playing and queued; speech start (barge-in) and `/talk` stop all speech.
 
 ## Modes and shortcuts
 
@@ -130,7 +130,7 @@ Alt+M is a Global binding in `~/.claude/keybindings.json`: `"alt+m": "app:toggle
 
 Relay stdout events: `ready {port, device, client}` (the engine's port and this session's client id), `speech`, `partial {text}`, `heard {text}`, `spoken`, `level {mic, out}`, `log {text}`, `taken` (another session took the microphone), `loading` (the engine restarted; reconnecting), `end {text}` (the engine quit, failed or did not start; voice mode turns off with `text` as a toast).
 `level` carries the RMS of the latest VAD frame (`mic`, 0 while muted and not recording) and of the latest chunk played (`out`), checked every `LEVEL_EVERY` frames (about 15 a second) and sent only when either changed; values at or under `LEVEL_FLOOR` are sent as 0, so silence sends nothing.
-HTTP, each POST with the session's `X-Client` header: `GET /events` (the session's event stream, held open by the relay), `POST /speak` (body is the text, queued after any speech playing; drops progress lines not yet started), `POST /narrate` (body is a progress line, queued; dropped if a `/speak` or `/stop` comes first or it waits past `NARRATE_SECONDS`; ending one sends no `spoken`), `POST /stop` (drop all speech playing and queued, every session's), `POST /mute`, `POST /unmute` (hands-free; the microphone starts muted), `POST /talk` (start a manual recording), `POST /send` (end it and send it as `heard`), `POST /cancel` (drop it); which session each one acts for is under Routing between sessions. `/talk`, `/send` and `/cancel` reach the audio loop through a queue.
+HTTP, each POST with the session's `X-Client` header: `GET /events` (the session's event stream, held open by the relay), `POST /speak` (body is the text, queued after any speech playing; drops progress lines not yet started), `POST /narrate` (body is a progress line, queued; dropped if a `/speak` or `/stop` comes first or it waits past `NARRATE_SECONDS`; ending one sends no `spoken`), `POST /stop` (drop the session's speech playing and queued), `POST /mute`, `POST /unmute` (hands-free; the microphone starts muted), `POST /talk` (start a manual recording), `POST /send` (end it and send it as `heard`), `POST /cancel` (drop it); which session each one acts for is under Routing between sessions. `/talk`, `/send` and `/cancel` reach the audio loop through a queue.
 
 ## Swapping a model
 

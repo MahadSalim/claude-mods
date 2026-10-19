@@ -1,7 +1,7 @@
 """Shared live voice engine: Whisper, Kokoro, the VAD, the microphone and the speaker for every session, behind localhost HTTP and a tray icon.
 
 GET /events is a session's event stream, `ready {port, device, client}` once the models are loaded; each POST carries the session's id in the X-Client header.
-POST /speak and /narrate queue the session's speech; /stop ends all speech; /unmute (hands-free) and /talk (a recording) give the session the microphone, telling the session that had it `taken`; /mute, /send and /cancel act only for the session holding it.
+POST /speak and /narrate queue the session's speech; /stop ends the session's speech; /unmute (hands-free) and /talk (a recording) give the session the microphone, telling the session that had it `taken`; /mute, /send and /cancel act only for the session holding it.
 The microphone stream is open while any session is connected. The tray's Quit, or a failure loading the models or running the audio, ends the engine, sending each session `end` and removing the tray icon; Restart starts a new engine and exits.
 """
 
@@ -60,7 +60,7 @@ class Engine:
         self.routes = {
             "/speak": lambda client, body: self.speaker.say(body, client),
             "/narrate": lambda client, body: self.speaker.narrate(body, client),
-            "/stop": lambda client, body: self.speaker.stop(),
+            "/stop": lambda client, body: self.speaker.stop(client),
             "/unmute": lambda client, body: self.take(client) or self.muted.clear(),
             "/talk": lambda client, body: self.take(client) or self.requests.put("talk"),
             "/mute": lambda client, body: self.release(client, False),
@@ -167,8 +167,8 @@ class Engine:
                 self.present.clear()
                 with self.requests.mutex:
                     self.requests.queue.clear()
-            if self.speaker and (self.speaker.client == client or not self.clients):
-                self.speaker.stop()
+            if self.speaker:
+                self.speaker.stop(client)
 
     def status(self):
         """The engine's state for the tray: loading, ready, listening or speaking."""
