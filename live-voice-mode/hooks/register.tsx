@@ -73,7 +73,18 @@ const speakable = (text: string) =>
     .replace(/\s+/g, ' ')
     .trim()
 
+/** A sentence or line end, and for a step's first phrase also a comma or its first eight words. */
+const SENTENCE_END = /[.!?]\s|\n/g
+const PAUSE = /[,.!?]\s|\n|^(\S+\s+){8}/g
+
+/** How much of `text` makes whole phrases: up to its last pause outside a code block, 0 when none. */
+const cut = (text: string, first: boolean) =>
+  Math.max(0, ...[...text.matchAll(first ? PAUSE : SENTENCE_END)].map(match => match.index + match[0].length).filter(end => text.slice(0, end).split('```').length % 2))
+
 const setStatus = ($: EngineInterface, next: VoiceStatus) => update($, status, () => next)
+
+/** Sets the status to `next` while it is speaking. */
+const quiet = ($: EngineInterface, next: VoiceStatus) => update($, status, now => (now === 'speaking' ? next : now))
 
 /** Sends one request to the sidecar's HTTP server. */
 const post = async ($: EngineInterface, path: string, body = '') => {
@@ -84,6 +95,25 @@ const post = async ($: EngineInterface, path: string, body = '') => {
 
 /** The last progress line spoken, and when the last tool summary was. */
 const told = { line: '', at: -Infinity }
+
+/** The main loop's step as it streams: its text, how much of it was posted to /speak, and whether its speech was ended. */
+const said = { text: '', sent: 0, ended: false }
+
+/** Whether speech of `turnId` may start: it is the main loop's running turn, the sidecar is up and the person is not speaking. */
+const audible = async ($: EngineInterface, turnId: string) => turnId === live.turnId && live.port !== undefined && (await read($, status)) !== 'hearing'
+
+/** Posts the step's next `end` characters to /speak as one phrase, unless its speech was ended or `turnId` is not audible. */
+const utter = async ($: EngineInterface, turnId: string, end: number) => {
+  const text = speakable(said.text.slice(said.sent, said.sent + end))
+
+  if (!text || said.ended || !(await audible($, turnId))) {
+    return
+  }
+
+  said.sent += end
+  await setStatus($, 'speaking')
+  await post($, '/speak', text).catch(error => $.ui.log(`Voice speech failed: ${error}`, { to: 'debug' }))
+}
 
 /** A tool use as its spoken verb and, for a file tool, the file's name without its extensions. */
 const phrase = ({ name, input }: TurnStepToolUse): [string?, string?] => {
@@ -113,7 +143,7 @@ const summary = (uses: readonly TurnStepToolUse[]) => {
 
 /** Speaks a progress line of the main loop's running turn in progress verbosity; a tool summary at most once per SUMMARY_MS. */
 const narrate = async ($: EngineInterface, turnId: string, line: string, isSummary: boolean) => {
-  if (!line || line === told.line || turnId !== live.turnId || live.port === undefined || (await read($, verbosity)) === 'answer' || (await read($, status)) === 'hearing') {
+  if (!line || line === told.line || !(await audible($, turnId)) || (await read($, verbosity)) === 'answer') {
     return
   }
 
@@ -179,10 +209,11 @@ const shortcuts = (isMuted: boolean, tap: boolean) => `alt+m ${tap ? 'talk/send'
 const lookOf = (now: Exclude<VoiceStatus, 'off'>, isMuted: boolean, tap: boolean): VoiceLook =>
   now === 'listening' || now === 'thinking' ? (isMuted ? 'muted' : tap ? 'ready' : 'listening') : now === 'hearing' && tap ? 'rec' : now
 
-/** Ends the reply being spoken. */
-const skip = async ($: EngineInterface) => {
+/** Ends the reply being spoken and the rest of its step's speech, the status going from speaking to `next`. */
+const skip = async ($: EngineInterface, next: VoiceStatus = 'listening') => {
+  said.ended = true
   await post($, '/stop')
-  await update($, status, now => (now === 'speaking' ? 'listening' : now))
+  await quiet($, next)
 }
 
 /** Switches between speaking only the answer and speaking progress lines too. */
@@ -244,7 +275,7 @@ const handle = async ($: EngineInterface, event: SidecarEvent) => {
       void send($, event.text)
       return
     case 'spoken':
-      return update($, status, now => (now === 'speaking' ? 'listening' : now))
+      return live.turnId === undefined ? quiet($, 'listening') : undefined
     case 'level':
       return update($, levels, () => ({ mic: event.mic, out: event.out }))
     case 'log':
@@ -325,24 +356,34 @@ export const register: Register = on => {
     }
 
     const stream = next(e)
-    let text = ''
     let spoke = false
+    Object.assign(said, { text: '', sent: 0, ended: false })
 
     for await (const chunk of stream) {
       yield chunk
 
       if (chunk.kind === 'text') {
-        text += chunk.text
-      } else if (chunk.kind === 'tool' && !spoke && speakable(text)) {
+        said.text += chunk.text
+        await utter($, e.turnId, cut(said.text.slice(said.sent), !said.sent))
+      } else if (chunk.kind === 'tool' && !spoke && speakable(said.text)) {
         spoke = true
-        await narrate($, e.turnId, speakable(text), false)
+
+        if (!said.sent) {
+          await narrate($, e.turnId, speakable(said.text), false)
+        } else if ((await read($, verbosity)) === 'answer') {
+          await skip($, 'thinking').catch(error => $.ui.log(`Voice stop failed: ${error}`, { to: 'debug' }))
+        } else {
+          await utter($, e.turnId, said.text.length - said.sent)
+          await quiet($, 'thinking')
+        }
       }
     }
 
     const result = await stream.result
+    const text = speakable(said.text)
 
     if (!spoke && result.stopReason === 'tool_use') {
-      await narrate($, e.turnId, speakable(text) || summary(result.toolUses), !speakable(text))
+      await narrate($, e.turnId, text || summary(result.toolUses), !text)
     }
 
     return result
@@ -363,9 +404,10 @@ export const register: Register = on => {
       return result
     }
 
-    const text = e.reason === 'answer' ? speakable(e.answer) : ''
+    const going = e.reason === 'answer' && !said.ended
+    const text = going ? speakable(said.sent ? said.text.slice(said.sent) : e.answer) : ''
 
-    if (text) {
+    if (text || (going && said.sent)) {
       await setStatus($, 'speaking')
       await post($, '/speak', text)
     } else {

@@ -350,27 +350,30 @@ test('voice mode adds a footer label and its shortcuts to the hint line', { time
 
 type Use = { name: string; input: unknown }
 
-/** A model beneath the plugins, and a call that runs a main-loop step through it streaming `text` and then asking for `uses`, returning every line posted to /narrate so far. */
+/** The bodies of the requests posted to `path`. */
+const bodies = (spoken: string[], path: string) => spoken.filter(request => request.includes(`${path} `)).map(request => request.split(`${path} `)[1])
+
+/** A model beneath the plugins, and a call that runs a main-loop step through it streaming `text` in its chunks and then asking for `uses`, returning every line posted to /narrate so far. */
 const stepper = (on: On) => {
-  let reply = { text: '', uses: [] as Use[] }
+  let reply = { text: [] as string[], uses: [] as Use[] }
   on('turn.step', async function* ($, e) {
-    if (reply.text) {
-      yield { kind: 'text' as const, index: 0, text: reply.text }
+    for (const text of reply.text.filter(Boolean)) {
+      yield { kind: 'text' as const, index: 0, text }
     }
     for (const [index, use] of reply.uses.entries()) {
       yield { kind: 'tool' as const, index: index + 1, id: `u${index}`, name: use.name }
     }
 
-    return { turnId: e.turnId, index: e.index, answer: reply.text, toolUses: reply.uses, stopReason: 'tool_use' as const, usage: null }
+    return { turnId: e.turnId, index: e.index, answer: reply.text.join(''), toolUses: reply.uses, stopReason: reply.uses.length ? ('tool_use' as const) : ('end_turn' as const), usage: null }
   })
 
-  return async ($: Engine, spoken: string[], text: string, uses: Use[], turnId = 't1') => {
-    reply = { text, uses }
+  return async ($: Engine, spoken: string[], text: string | string[], uses: Use[], turnId = 't1') => {
+    reply = { text: [text].flat(), uses }
     for await (const chunk of $.turn.step({ turnId, index: 0, model: 'm', messageCount: 1 })) {
       void chunk
     }
 
-    return spoken.filter(request => request.includes('/narrate ')).map(request => request.split('/narrate ')[1])
+    return bodies(spoken, '/narrate')
   }
 }
 
@@ -384,7 +387,7 @@ const startTurn = async ($: Engine, on: On, answer = false) => {
   }
   await $.turn.start({ turnId: 't1', text: 'go' })
 
-  return { ...started, clock, step: (text: string, uses: Use[], turnId?: string) => run($, started.spoken, text, uses, turnId) }
+  return { ...started, clock, step: (text: string | string[], uses: Use[], turnId?: string) => run($, started.spoken, text, uses, turnId) }
 }
 
 const use = (name: string, input: object = {}) => ({ name, input })
@@ -453,4 +456,92 @@ test('nothing is narrated in answer only, for a stale turn, or while hearing', {
   await band.press({ key: 'voice-mute' })
   expect(await step('Reading it.', [use('Read', { file_path: 'a.ts' })])).toEqual([])
   await close()
+})
+
+/** Ends turn t1 with `answer`. */
+const answered = ($: Engine, answer: string) => $.turn.complete({ turnId: 't1', reason: 'answer', answer, durationMs: 1, isAborted: false })
+
+test('a reply is spoken phrase by phrase as it streams, the first at a comma, and only its rest at the end', { timeoutMs: 30000 }, async ($, on) => {
+  const { spoken, band, step, close } = await startTurn($, on, true)
+
+  await step(['Sure, here', ' it is. The file has', ' three parts. Done'], [])
+  expect(bodies(spoken, '/speak')).toEqual(['Sure,', 'here it is.', 'The file has three parts.'])
+  expect(await head(band)).toBe('SPEAKING')
+
+  await answered($, 'Sure, here it is. The file has three parts. Done')
+  expect(bodies(spoken, '/speak')).toEqual(['Sure,', 'here it is.', 'The file has three parts.', 'Done'])
+  await close()
+})
+
+test('a first phrase with no pause comes at eight words, and a code block only once it closes', { timeoutMs: 30000 }, async ($, on) => {
+  const { spoken, step, close } = await startTurn($, on, true)
+
+  await step(['one two three four five six seven eight nine ten'], [])
+  await answered($, 'one two three four five six seven eight nine ten')
+  await $.turn.start({ turnId: 't1', text: 'go' })
+  await step(['Here, run:\n```', 'sh\nnpm test\n', '```\nThat is it. '], [])
+  await answered($, 'Here, run:\n```sh\nnpm test\n```\nThat is it.')
+  expect(bodies(spoken, '/speak')).toEqual(['one two three four five six seven eight', 'nine ten', 'Here, run:', 'Code block omitted. That is it.', ''])
+  await close()
+})
+
+test('in answer only, text streamed before a tool call is stopped and the answer still spoken', { timeoutMs: 30000 }, async ($, on) => {
+  const { spoken, band, step, close } = await startTurn($, on, true)
+
+  await step(['Let me look, then fix it.'], [use('Read', { file_path: 'a.ts' })])
+  expect(spoken.slice(-2)).toEqual(['http://127.0.0.1:4321/speak Let me look,', 'http://127.0.0.1:4321/stop '])
+  expect(await head(band)).toBe('READY')
+
+  await step(['Fixed.'], [])
+  await answered($, 'Fixed.')
+  expect(bodies(spoken, '/speak')).toEqual(['Let me look,', 'Fixed.'])
+  await close()
+})
+
+test('in progress, text streamed before a tool call is spoken once, whole', { timeoutMs: 30000 }, async ($, on) => {
+  const { spoken, band, step, close } = await startTurn($, on)
+
+  expect(await step(['Let me look, then', ' fix it.'], [use('Read', { file_path: 'a.ts' })])).toEqual([])
+  expect(bodies(spoken, '/speak')).toEqual(['Let me look,', 'then fix it.'])
+  expect(bodies(spoken, '/stop')).toEqual([])
+  expect(await head(band)).toBe('READY')
+  await close()
+})
+
+test('Skip ends the rest of a streaming reply', { timeoutMs: 30000 }, async ($, on) => {
+  const { spoken, band, step, close } = await startTurn($, on, true)
+
+  await step(['Sure, here it is.'], [])
+  await band.press({ key: 'voice-skip' })
+  await answered($, 'Sure, here it is.')
+  expect(bodies(spoken, '/speak')).toEqual(['Sure,'])
+  expect(await head(band)).toBe('READY')
+  await close()
+})
+
+test('the panel stays speaking between streamed phrases until the whole reply is spoken', { timeoutMs: 30000 }, async ($, on) => {
+  const gate = () => {
+    let release = () => {}
+    return { opened: new Promise<void>(resolve => (release = resolve)), open: () => (release(), settle()) }
+  }
+  const gates = [gate(), gate(), gate()] as const
+  const { spoken } = world(on, [line({ type: 'ready', port: 4321, device: 'cuda' }), line({ type: 'spoken' }), line({ type: 'spoken' }), line({ type: 'log', text: 'end' })], ...gates.map(gate => gate.opened))
+  const run = stepper(on)
+
+  await $.command.run({ command: 'live-voice', args: '' } as never)
+  await settle()
+  const band = await $.ui.mount(BAND)
+  await $.turn.start({ turnId: 't1', text: 'go' })
+  await run($, spoken, ['Sure, here it is. '], [])
+  await gates[0].open()
+  expect(await head(band)).toBe('SPEAKING')
+
+  await answered($, 'Sure, here it is.')
+  expect(spoken.at(-1)).toBe('http://127.0.0.1:4321/speak ')
+  expect(await head(band)).toBe('SPEAKING')
+
+  await gates[1].open()
+  expect(await head(band)).toBe('READY')
+  await band.unmount()
+  await gates[2].open()
 })
