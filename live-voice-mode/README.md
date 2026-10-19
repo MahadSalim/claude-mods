@@ -23,7 +23,7 @@ Voice mode for Claude Code, tap to talk or hands-free. `/live-voice` turns it on
 | `sidecar/live_voice/launch.py` | `start`: a process detached, windowless and out of every job object, or through WMI `Win32_Process.Create` when it stays in one. |
 | `sidecar/live_voice/detector.py` | `VoiceDetector`: Silero VAD, speech probability per frame. |
 | `sidecar/live_voice/transcriber.py` | `Transcriber`: faster-whisper, final text of an utterance and quick partial passes, one pass at a time, both with `HOTWORDS`; a reading of only hotwords (`Claude.`) is no text. |
-| `sidecar/live_voice/live_words.py` | `LiveWords`: back-to-back Whisper partial passes over the utterance so far, partial words while speaking. |
+| `sidecar/live_voice/live_words.py` | `LiveWords`: back-to-back Whisper partial passes over the last `PARTIAL_FRAMES` (28 s) of the utterance so far, partial words while speaking, sent when they change. |
 | `sidecar/live_voice/speaker.py` | `Speaker`: Kokoro TTS into the playback buffer, answers (`say`) and transient progress lines (`narrate`), each of a session; `client` is the session whose line is playing, `level` the RMS of the last chunk played. |
 | `sidecar/live_voice/audio.py` | `listen`: 48 kHz WASAPI duplex stream on the default devices as they are when it opens, while any session is connected, left after `STALL_SECONDS` with no audio so the engine reopens it; WebRTC echo cancellation; `Segmenter`: utterance segmentation, manual recordings, barge-in, `level` events. |
 | `sidecar/live_voice/server.py` | `serve`: localhost HTTP, POST routes called with the `X-Client` header's session, and `GET /events`, a session's event stream. |

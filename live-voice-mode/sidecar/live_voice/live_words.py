@@ -6,7 +6,7 @@ import threading
 
 import numpy as np
 
-from .config import UNFINISHED
+from .config import PARTIAL_FRAMES, UNFINISHED
 from .events import emit
 
 FINISHED = re.compile(r"[.!?]$")
@@ -14,7 +14,7 @@ TRAILING = re.compile(rf"(\.\.|…|\b(?:{UNFINISHED})\.)$", re.IGNORECASE)
 
 
 class LiveWords:
-    """Back-to-back Whisper partial passes over each utterance so far, emitting the words as partial events."""
+    """Back-to-back Whisper partial passes over the last PARTIAL_FRAMES of each utterance so far, emitting the words as partial events when they change."""
 
     def __init__(self, transcriber):
         self.transcriber = transcriber
@@ -57,8 +57,9 @@ class LiveWords:
                     audio.append(frame)
 
             if audio:
-                text = self.transcriber.partial(np.concatenate(audio))
+                text = self.transcriber.partial(np.concatenate(audio[-PARTIAL_FRAMES:]))
                 with self.ending:
                     if utterance == self.utterance:
+                        if text != self.heard[1]:
+                            emit("partial", text=text)
                         self.heard = (len(audio), text)
-                        emit("partial", text=text)

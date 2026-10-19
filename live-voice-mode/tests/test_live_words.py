@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import numpy as np
 
 from live_voice import events
-from live_voice.config import FRAME
+from live_voice.config import FRAME, PARTIAL_FRAMES
 from live_voice.live_words import LiveWords
 
 
@@ -23,8 +23,10 @@ class Transcriber:
         self.go = threading.Event()
         self.go.set()
         self.started = threading.Event()
+        self.lengths = []
 
     def partial(self, audio):
+        self.lengths.append(len(audio) // FRAME)
         self.started.set()
         self.go.wait()
         return self.text
@@ -63,6 +65,14 @@ class Words(unittest.TestCase):
         ):
             self.assertEqual(self.heard(text).finished(3), done, text)
         self.assertFalse(self.heard("Fix the bug.").finished(4))
+
+    def test_a_partial_reads_the_last_partial_frames_and_is_sent_once_per_change(self):
+        words = self.heard("Same words")
+        for _ in range(PARTIAL_FRAMES):
+            words.add(np.zeros(FRAME, np.float32))
+        self.assertTrue(wait(lambda: words.heard[0] == PARTIAL_FRAMES + 3))
+        self.assertEqual((words.transcriber.lengths[-2] <= 3, words.transcriber.lengths[-1]), (True, PARTIAL_FRAMES))
+        self.assertEqual(self.seen, [{"type": "partial", "text": "Same words"}])
 
     def test_no_partial_comes_once_its_utterance_ended(self):
         transcriber = Transcriber("hello")

@@ -38,6 +38,8 @@ MIN_FRAMES = 12
 SPEECH_FRAMES = 5
 MAX_FRAMES = 940
 MANUAL_MAX_FRAMES = 3750
+# The live words read only the last PARTIAL_FRAMES of an utterance, within one 30 s Whisper window.
+PARTIAL_FRAMES = 875
 START_PROB = 0.5
 END_PROB = 0.35
 
