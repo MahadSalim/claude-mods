@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import type { Engine } from 'claude-code/testing'
+import type { Engine, Mounted } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 const NAME = 'live-voice-mode'
@@ -7,6 +7,8 @@ const SITE = { scroll: { offset: 0, bodyRows: 20 }, view: {} }
 const BAND = { plugin: NAME, surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 80, ...SITE } } as const
 const DONE = { value: undefined }
 const MODE = /^(hands-free|tap to talk)/
+
+type Band = Mounted<'terminal', 'AbovePrompt'>
 
 declare const setTimeout: (fn: (value?: unknown) => void, ms: number) => unknown
 
@@ -95,7 +97,7 @@ const startBand = async ($: Engine, on: On, after = '', surface: 'terminal' | 'd
 
   await $.command.run({ command: 'live-voice', args: '' } as never)
   await settle()
-  const band = await $.ui.mount({ ...BAND, surface })
+  const band: Band = await $.ui.mount({ ...BAND, surface } as typeof BAND)
 
   return { spoken, band, close: async () => (await band.unmount(), close(), await settle()) }
 }
@@ -110,7 +112,7 @@ const startHandsFree = async (...args: Parameters<typeof startBand>) => {
 }
 
 /** The primary button, mode button, header state and mode the band shows. */
-const labels = async (band: Awaited<ReturnType<typeof startBand>>['band']) =>
+const labels = async (band: Band) =>
   [(await band.find({ key: 'voice-mute' }))?.props.label, (await band.find({ key: 'voice-mode' }))?.props.label, await head(band), (await band.find({ type: 'Text', text: MODE }))?.text]
 
 test('voice mode starts in tap to talk, where the primary button talks and then sends', { timeoutMs: 30000 }, async ($, on) => {
@@ -242,7 +244,7 @@ test('a reply that ends while the person is recording is not spoken', async ($, 
 })
 
 /** The panel as drawn: border colour and row gap, header state, mode, line beside the meter, any further text, and button labels. */
-const panel = async (band: Awaited<ReturnType<typeof startBand>>['band']) => {
+const panel = async (band: Band) => {
   const [mode, hint, ...rest] = (await band.findAll({ type: 'Text' })).map(element => element.text)
   const frame = (await band.findAll({ type: 'Box' })).find(box => box.props.borderStyle === 'round')
 
@@ -589,7 +591,7 @@ test('the panel shows loading while the engine restarts, and an engine that quit
   const { spoken, clients, toasts } = world(
     on,
     [
-      line({ type: 'ready', port: 4321, device: 'cuda', client: '1' }),
+      line({ type: 'ready', port: 4321, device: 'cuda', client: '1' }) + line({ type: 'speech' }) + line({ type: 'partial', text: 'list the fi' }),
       line({ type: 'loading' }),
       line({ type: 'ready', port: 5555, device: 'cuda', client: '2' }),
       line({ type: 'end', text: 'Voice engine quit; voice mode off.' }),
@@ -603,7 +605,8 @@ test('the panel shows loading while the engine restarts, and an engine that quit
   await settle()
   const band = await $.ui.mount(BAND)
   await restarting.open()
-  expect(await head(band)).toBe('LOADING')
+  await band.press({ key: 'voice-mute' })
+  expect([await head(band), (await panel(band)).hint, spoken]).toEqual(['LOADING', 'loading Whisper…', []])
 
   await restarted.open()
   expect(await head(band)).toBe('READY')

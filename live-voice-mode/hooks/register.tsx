@@ -230,6 +230,9 @@ const press = async ($: EngineInterface) => {
   if ((await read($, mode)) === 'handsFree') {
     return toggleMute($)
   }
+  if (live.port === undefined) {
+    return
+  }
 
   const recording = (await read($, status)) === 'hearing'
   if (recording) {
@@ -267,6 +270,7 @@ const handle = async ($: EngineInterface, event: SidecarEvent) => {
       return setStatus($, idle())
     case 'loading':
       live.port = undefined
+      await update($, words, () => '')
       return setStatus($, 'loading')
     case 'taken':
       $.ui.toast('Another session took the microphone.')
