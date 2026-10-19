@@ -2,7 +2,7 @@
 
 GET /events is a session's event stream, `ready {port, device, client}` once the models are loaded; each POST carries the session's id in the X-Client header.
 POST /speak and /narrate queue the session's speech; /stop ends all speech; /unmute (hands-free) and /talk (a recording) give the session the microphone, telling the session that had it `taken`; /mute, /send and /cancel act only for the session holding it.
-The microphone stream is open while any session is connected. The tray's Quit, or a failure loading the models or running the audio, ends the engine, sending each session `end`; Restart starts a new engine and exits.
+The microphone stream is open while any session is connected. The tray's Quit, or a failure loading the models or running the audio, ends the engine, sending each session `end` and removing the tray icon; Restart starts a new engine and exits.
 """
 
 import contextlib
@@ -38,6 +38,7 @@ class Engine:
         self.speaker = None
         self.device = None
         self.port = None
+        self.ending = None
         self.routes = {
             "/speak": lambda client, body: self.speaker.say(body, client),
             "/narrate": lambda client, body: self.speaker.narrate(body, client),
@@ -172,19 +173,17 @@ class Engine:
         except Exception as error:
             traceback.print_exc()
             self.end(f"Voice engine failed: {error}")
-            os._exit(1)
+            self.finish("failed")
+
+    def finish(self, ending):
+        """Ends the engine: `ending` is restart, quit or failed."""
+        self.ending = ending
 
 
 def tray(engine):
-    """Shows the tray icon until Restart or Quit, and returns which."""
+    """Shows the tray icon until the engine ends, and returns its ending."""
     import pystray
     from PIL import Image, ImageDraw
-
-    chosen = []
-
-    def finish(icon, action):
-        chosen.append(action)
-        icon.stop()
 
     def label():
         count = len(engine.clients)
@@ -198,22 +197,23 @@ def tray(engine):
     def refresh(icon):
         icon.visible = True
         shown = ""
-        while not chosen:
+        while not engine.ending:
             if label() != shown:
                 shown = label()
                 icon.title = shown
                 icon.icon = picture(COLORS[engine.status()])
                 icon.update_menu()
             time.sleep(0.5)
+        icon.stop()
 
     menu = pystray.Menu(
         pystray.MenuItem(lambda item: label(), None, enabled=False),
-        pystray.MenuItem("Restart", lambda icon: finish(icon, "restart")),
-        pystray.MenuItem("Quit", lambda icon: finish(icon, "quit")),
+        pystray.MenuItem("Restart", lambda: engine.finish("restart")),
+        pystray.MenuItem("Quit", lambda: engine.finish("quit")),
     )
     pystray.Icon("live-voice-engine", picture(COLORS["loading"]), "Voice engine", menu).run(refresh)
 
-    return chosen[0]
+    return engine.ending
 
 
 def main():
@@ -237,7 +237,7 @@ def main():
 
     if ending == "restart":
         start([sys.executable, os.path.abspath(__file__)])
-    else:
+    elif ending == "quit":
         engine.end("Voice engine quit; voice mode off.")
 
     os._exit(0)

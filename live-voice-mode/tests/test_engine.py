@@ -1,5 +1,7 @@
 """Engine routing, the single-instance lock, the relay and per-session `spoken`, with fakes: no models, no audio."""
 
+import contextlib
+import io
 import json
 import os
 import socket
@@ -11,6 +13,7 @@ import time
 import types
 import unittest
 import urllib.request
+from unittest import mock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "sidecar"))
@@ -134,6 +137,26 @@ class Routing(unittest.TestCase):
         post(engine, second, "/talk")
         self.assertEqual(engine.owner, second)
         a.close(), b.close()
+
+
+class Failure(unittest.TestCase):
+    def setUp(self):
+        fresh()
+
+    def test_a_failure_loading_the_models_ends_every_session_and_the_engine(self):
+        engine, _ = started()
+        lines, _ = joined()
+
+        def broken(path):
+            raise RuntimeError("no GPU")
+
+        loaders = types.SimpleNamespace(listen=None, VoiceDetector=None, LiveWords=None, Speaker=None, Transcriber=broken)
+        modules = {f"live_voice.{name}": loaders for name in ("audio", "detector", "live_words", "speaker", "transcriber")}
+        with mock.patch.dict(sys.modules, modules), contextlib.redirect_stderr(io.StringIO()):
+            engine.run()
+
+        self.assertEqual((next_event(lines), engine.ending), ({"type": "end", "text": "Voice engine failed: no GPU"}, "failed"))
+        lines.close()
 
 
 class SingleInstance(unittest.TestCase):
