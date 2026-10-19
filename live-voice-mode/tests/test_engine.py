@@ -11,6 +11,7 @@ import time
 import types
 import unittest
 import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "sidecar"))
 
@@ -165,6 +166,24 @@ class Relay(unittest.TestCase):
         self.assertEqual([os.path.basename(path) for path in launched[0]], ["pythonw.exe", "engine.py"])
         self.assertEqual(len(launched), 1)
         lines.close()
+
+    def test_another_program_on_the_state_files_port_is_not_the_engine(self):
+        class Other(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Other)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        with open(relay.ENGINE_STATE, "w") as file:
+            json.dump({"port": server.server_address[1], "pid": 0}, file)
+
+        self.assertIsNone(relay.attach())
+        server.shutdown()
+        server.server_close()
 
     def test_the_relay_reconnects_after_a_restart_and_ends_when_the_engine_quits(self):
         _, old = started()

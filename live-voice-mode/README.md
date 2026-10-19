@@ -22,7 +22,7 @@ Voice mode for Claude Code, tap to talk or hands-free. `/live-voice` turns it on
 | `sidecar/live_voice/live_words.py` | `LiveWords`: back-to-back Whisper partial passes over the utterance so far, partial words while speaking. |
 | `sidecar/live_voice/speaker.py` | `Speaker`: Kokoro TTS into the playback buffer, answers (`say`) and transient progress lines (`narrate`), each of a session; `client` is the session whose line is playing, `level` the RMS of the last chunk played. |
 | `sidecar/live_voice/audio.py` | `listen`: 48 kHz WASAPI duplex stream while any session is connected, WebRTC echo cancellation, utterance segmentation, manual recordings, barge-in, `level` events. |
-| `sidecar/live_voice/server.py` | `serve`: localhost HTTP, POST routes called with the `X-Client` header's session, and `GET /events`, a session's event stream. |
+| `sidecar/live_voice/server.py` | `serve`: localhost HTTP, POST routes called with the `X-Client` header's session, and `GET /events`, a session's event stream, answered with the `X-Voice-Engine: 1` header (`MARK`). |
 | `sidecar/requirements.txt` | Sidecar packages, pinned. |
 
 ## Data flow
@@ -53,7 +53,7 @@ Speaking while a reply plays stops playback (barge-in), and sending a heard prom
 One engine per machine holds Whisper, Kokoro, the VAD, the microphone and the speaker; every session's voice mode goes through it. Each request the mod posts carries its session's client id (from `ready`) in the `X-Client` header.
 
 - **Start.** `/live-voice` spawns `relay.py`. When nothing answers as the engine on the port in `engine.json`, the relay starts `engine.py` with the venv's `pythonw.exe` through `launch.start` (detached, new process group, broken away from the job; if it is still in a job, it is killed and started through WMI instead), then waits up to `START_SECONDS` for it. The panel shows Loading until the engine's `ready`.
-- **Single instance.** The engine locks `engine.lock` for its life (waiting up to `LOCK_SECONDS`) before anything else, and exits at once when another engine holds it; then it writes `engine.json` (`port`, `pid`). A state file left by a dead engine is stale: its port does not answer, so the relay starts a new engine, which takes the free lock and rewrites the file.
+- **Single instance.** The engine locks `engine.lock` for its life (waiting up to `LOCK_SECONDS`) before anything else, and exits at once when another engine holds it; then it writes `engine.json` (`port`, `pid`). A state file left by a dead engine is stale: its port does not answer with `MARK` (nothing listens, or another program does), so the relay starts a new engine, which takes the free lock and rewrites the file.
 - **Lifetime.** `/live-voice` again, End voice or the stop phrase ends only that session's relay; the engine sees its stream close. The engine keeps the models loaded and does not exit on its own: it ends on the tray's Quit, or when loading the models or running the audio fails (each session gets `end`, so its voice mode turns off with a toast).
 - **Microphone.** The audio stream is open only while at least one session is connected; the last one leaving closes it, ends any speech and drops queued requests.
 - **Restart** (tray) starts a new engine and exits. Each relay sees its stream end, writes `loading` (the panel shows Loading and posts nothing), reconnects, and passes on the new engine's `ready`; the mod posts `/unmute` again when hands-free and not muted. A relay whose stream ends before `ready` writes `end`.

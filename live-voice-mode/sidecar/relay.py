@@ -12,27 +12,30 @@ import time
 from live_voice.config import ENGINE_STATE, START_SECONDS
 from live_voice.events import emit
 from live_voice.launch import start
+from live_voice.server import MARK
 
 ENGINE = [os.path.join(os.path.dirname(sys.executable), "pythonw.exe"), os.path.join(os.path.dirname(os.path.abspath(__file__)), "engine.py")]
 
 
 def attach():
-    """The engine's event stream as a file of lines, or None when nothing answers as the engine on the state file's port."""
+    """The engine's event stream as a file of lines, or None when nothing answers with MARK on the state file's port."""
     try:
         with open(ENGINE_STATE) as file:
             port = json.load(file)["port"]
         conn = socket.create_connection(("127.0.0.1", port), timeout=5)
-        conn.sendall(b"GET /events HTTP/1.0\r\n\r\n")
-        lines = conn.makefile("rb")
-        if not lines.readline().startswith(b"HTTP/1.0 200"):
-            return None
-        while lines.readline().strip():
-            pass
     except (OSError, ValueError, KeyError):
         return None
 
-    conn.settimeout(None)
-    return lines
+    with conn:
+        lines = conn.makefile("rb")
+        try:
+            conn.sendall(b"GET /events HTTP/1.0\r\n\r\n")
+            if MARK.encode() in list(iter(lambda: lines.readline().strip(), b"")):
+                conn.settimeout(None)
+                return lines
+        except OSError:
+            pass
+        lines.close()
 
 
 def connect():
