@@ -90,7 +90,11 @@ class Speaker:
                 if stale or self.cut(serial, client):
                     break
 
-                audio, rate = self.kokoro.create(sentence, voice=VOICE, lang="en-us")
+                try:
+                    audio, rate = self.kokoro.create(sentence, voice=VOICE, lang="en-us")
+                except Exception as error:
+                    emit("log", text=f"Kokoro skipped {sentence!r}: {error}")
+                    continue
 
                 with self.lock:
                     if self.cut(serial, client):

@@ -77,6 +77,11 @@ class Speaking(unittest.TestCase):
         self.speaker.stop()
         self.assertEqual(set(play(self.speaker)), {0.0})
 
+    def test_a_sentence_kokoro_cannot_speak_is_skipped(self):
+        self.say(("a. Not this one.", "1"), ("c.", "1"))
+        self.assertEqual(set(play(self.speaker)) - {0.0}, {0.1, 0.3})
+        self.assertEqual([event["type"] for _, event in self.seen], ["log", "spoken"])
+
     def test_a_later_answer_drops_a_progress_line_not_yet_started(self):
         Kokoro.delay = 0.05
         self.speaker.say("a.", "1")
