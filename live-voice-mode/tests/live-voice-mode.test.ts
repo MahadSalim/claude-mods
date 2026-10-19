@@ -247,10 +247,12 @@ test('speaking during a running turn ends that turn before submitting, and a dro
   await closing.open()
 })
 
-test('a reply that ends while the person is recording is not spoken', async ($, on) => {
+test('a turn that starts or ends while the person is recording keeps the recording, and its reply is not spoken', { timeoutMs: 30000 }, async ($, on) => {
   const { spoken, band, close } = await startBand($, on)
 
   await band.press({ key: 'voice-mute' })
+  await $.turn.start({ turnId: 't1', text: 'typed' })
+  expect((await labels(band)).slice(0, 3)).toEqual(['Send', 'Hands-free', 'REC'])
   await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'Done.', durationMs: 1, isAborted: false })
   expect(spoken).toEqual(['http://127.0.0.1:4321/talk '])
   await close()

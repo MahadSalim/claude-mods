@@ -384,7 +384,7 @@ export const register: Register = on => {
       live.turnId = e.turnId
 
       if (live.port !== undefined) {
-        await setStatus($, 'thinking')
+        await update($, status, now => (now === 'hearing' ? now : 'thinking'))
       }
     }
 
