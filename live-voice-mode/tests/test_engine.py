@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import numpy as np
 
 import relay
-from engine import Engine, Flag
+from engine import LOG_BYTES, Engine, Flag, journal
 from live_voice import events
 from live_voice.launch import free, hold
 from live_voice.server import serve
@@ -183,6 +183,19 @@ class Failure(unittest.TestCase):
 
         self.assertEqual((next_event(lines), engine.ending), ({"type": "end", "text": "Voice engine failed: no GPU"}, "failed"))
         lines.close()
+
+
+class Log(unittest.TestCase):
+    def test_a_log_over_log_bytes_moves_aside_when_the_engine_starts(self):
+        path = os.path.join(tempfile.mkdtemp(), "engine.log")
+        for size, kept in ((10, "x" * 10), (LOG_BYTES + 1, "")):
+            with open(path, "w") as file:
+                file.write("x" * size)
+            with journal(path) as log:
+                log.write("y")
+            with open(path) as file:
+                self.assertEqual(file.read(), kept + "y")
+        self.assertEqual(os.path.getsize(f"{path}.old"), LOG_BYTES + 1)
 
 
 class SingleInstance(unittest.TestCase):

@@ -20,6 +20,7 @@ from live_voice.launch import hold, start
 from live_voice.server import serve
 
 COLORS = {"loading": "gray", "ready": "darkcyan", "listening": "limegreen", "speaking": "magenta"}
+LOG_BYTES = 1 << 20
 
 
 class Flag(threading.Event):
@@ -243,11 +244,18 @@ def tray(engine):
     return engine.ending
 
 
-def main():
-    sys.stderr = open(ENGINE_LOG, "a", buffering=1)
+def journal(path):
+    """`path` opened for appending, first moved to `<path>.old` once over LOG_BYTES."""
+    if os.path.isfile(path) and os.path.getsize(path) > LOG_BYTES:
+        os.replace(path, f"{path}.old")
+    return open(path, "a", buffering=1)
 
+
+def main():
     if hold(ENGINE_LOCK, LOCK_SECONDS) is None:
         return
+
+    sys.stderr = journal(ENGINE_LOG)
 
     engine = Engine()
     events.route = engine.route

@@ -58,7 +58,7 @@ One engine per machine holds Whisper, Kokoro, the VAD, the microphone and the sp
 - **Microphone.** The audio stream is open only while at least one session is connected; the last one leaving closes it, ends any speech and drops queued requests.
 - **Restart** (tray) starts a new engine and exits. Each relay sees its stream end, writes `loading` (the panel shows Loading and posts nothing), reconnects to the new engine without starting another, and passes on the new engine's `ready`; the mod posts `/unmute` again when hands-free and not muted. A relay whose stream ends before `ready` writes `end`.
 
-Tray icon (pystray, on the engine's main thread; its colour is the state, redrawn when the sessions, the microphone's holder or `Speaker.busy` change): right-click shows a disabled status line, `Voice engine: <loading|ready|listening|speaking>, N sessions`, then Restart and Quit. The engine writes its errors to `engine.log`.
+Tray icon (pystray, on the engine's main thread; its colour is the state, redrawn when the sessions, the microphone's holder or `Speaker.busy` change): right-click shows a disabled status line, `Voice engine: <loading|ready|listening|speaking>, N sessions`, then Restart and Quit. The engine writes its errors to `engine.log`; a log over 1 MB (`LOG_BYTES` in `engine.py`) is moved to `engine.log.old` when an engine starts.
 
 Routing between sessions:
 
