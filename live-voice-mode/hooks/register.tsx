@@ -178,6 +178,7 @@ const send = async ($: EngineInterface, text: string) => {
 
   if (result.drop !== undefined) {
     $.ui.toast(`Voice prompt dropped: ${result.drop}`)
+    await update($, status, now => (now === 'thinking' ? idle() : now))
   }
 }
 

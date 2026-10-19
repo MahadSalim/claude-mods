@@ -9,6 +9,7 @@ const DONE = { value: undefined }
 const MODE = /^(hands-free|tap to talk)/
 
 type Band = Mounted<'terminal', 'AbovePrompt'>
+const DROPPED = 'never mind'
 
 declare const setTimeout: (fn: (value?: unknown) => void, ms: number) => unknown
 
@@ -39,7 +40,7 @@ const world = (on: On, lines: string[], ...gates: Promise<void>[]) => {
 
     return { value: { code: 0, signal: null } }
   })
-  on('prompt.submit', ($, e) => (submitted.push(e.text), { text: e.text }))
+  on('prompt.submit', ($, e) => (submitted.push(e.text), e.text === DROPPED ? { drop: 'busy' } : { text: e.text }))
   on('http.fetch', ($, e) => (spoken.push(`${e.url} ${e.init?.body}`), clients.push(e.init?.headers?.['X-Client'] ?? ''), { value: { status: 204, ok: true, headers: {}, text: '' } }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
@@ -216,22 +217,34 @@ test('Send in tap to talk clears the words heard before the transcript arrives',
   await settle()
 })
 
-test('speaking during a running turn ends that turn before submitting', async ($, on) => {
-  let open = () => {}
-  const gate = new Promise<void>(resolve => (open = resolve))
-  const { submitted, aborted } = world(
+test('speaking during a running turn ends that turn before submitting, and a dropped prompt goes back to idle', { timeoutMs: 30000 }, async ($, on) => {
+  const [heard, dropped, closing] = [gate(), gate(), gate()]
+  const { submitted, aborted, toasts } = world(
     on,
-    [line({ type: 'ready', port: 4321, device: 'cuda' }), line({ type: 'heard', text: 'no, do the other one' })],
-    gate,
+    [
+      line({ type: 'ready', port: 4321, device: 'cuda' }),
+      line({ type: 'heard', text: 'no, do the other one' }),
+      line({ type: 'heard', text: DROPPED }),
+      line({ type: 'log', text: 'end' }),
+    ],
+    heard.opened,
+    dropped.opened,
+    closing.opened,
   )
 
   await $.command.run({ command: 'live-voice', args: '' } as never)
   await settle()
+  const band = await $.ui.mount(BAND)
   await $.turn.start({ turnId: 't1', text: 'list the files' })
-  open()
-  await settle()
+  await heard.open()
   expect(aborted).toEqual(['t1'])
   expect(submitted).toEqual(['no, do the other one'])
+
+  await dropped.open()
+  expect(toasts.at(-1)).toBe('Voice prompt dropped: busy')
+  expect((await panel(band)).hint).toBe('press Talk')
+  await band.unmount()
+  await closing.open()
 })
 
 test('a reply that ends while the person is recording is not spoken', async ($, on) => {
