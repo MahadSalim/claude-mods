@@ -1,5 +1,6 @@
 """Kokoro text to speech into the buffer the audio stream plays."""
 
+import collections
 import itertools
 import os
 import queue
@@ -34,6 +35,7 @@ class Speaker:
         self.serials = itertools.count(1)
         self.answered = 0
         self.stopped = {}
+        self.said = collections.Counter()
         self.busy = threading.Event()
         self.quiet_since = 0.0
         self.level = 0.0
@@ -80,6 +82,7 @@ class Speaker:
             serial, queued, text, client = self.lines.get()
             self.client = client
             narration = queued is not None
+            self.said[client] += not narration
             stale = narration and (serial < self.answered or time.monotonic() - queued > NARRATE_SECONDS)
             self.busy.set()
 
@@ -101,4 +104,4 @@ class Speaker:
                 self.quiet_since = time.monotonic()
                 self.busy.clear()
             if not narration and serial > self.stopped.get(client, 0) and not self.follows(client):
-                emit("spoken")
+                emit("spoken", lines=self.said[client])

@@ -44,7 +44,7 @@ class Speaking(unittest.TestCase):
         sys.modules["kokoro_onnx"] = types.SimpleNamespace(Kokoro=Kokoro)
         self.seen = []
         self.speaker = Speaker("")
-        events.route = lambda event: self.seen.append((event["type"], self.speaker.client))
+        events.route = lambda event: self.seen.append((self.speaker.client, event))
 
     def tearDown(self):
         events.route = None
@@ -54,10 +54,10 @@ class Speaking(unittest.TestCase):
         for text, client in lines:
             self.speaker.say(text, client)
 
-    def test_a_session_hears_spoken_once_its_own_lines_end(self):
+    def test_a_session_hears_spoken_with_its_line_count_once_its_own_lines_end(self):
         self.say(("a.", "1"), ("b.", "1"), ("c.", "2"))
         play(self.speaker)
-        self.assertEqual(self.seen, [("spoken", "1"), ("spoken", "2")])
+        self.assertEqual(self.seen, [("1", {"type": "spoken", "lines": 2}), ("2", {"type": "spoken", "lines": 1})])
 
     def test_a_sessions_next_line_plays_without_a_gap(self):
         Kokoro.delay = 0.05
@@ -69,7 +69,7 @@ class Speaking(unittest.TestCase):
         self.assertTrue(wait(lambda: len(self.speaker.pending)))
         self.speaker.stop("1")
         self.assertEqual(set(play(self.speaker)) - {0.0}, {0.2})
-        self.assertEqual(self.seen, [("spoken", "2")])
+        self.assertEqual(self.seen, [("2", {"type": "spoken", "lines": 1})])
 
     def test_a_stop_of_all_drops_every_line(self):
         self.say(("a.", "1"), ("b.", "2"))
