@@ -64,7 +64,8 @@ Routing between sessions:
 
 | What | Goes to |
 | --- | --- |
-| `speech`, `partial`, `heard`, the `mic` of `level` | The session holding the microphone. |
+| `speech`, `partial`, `heard` | The session holding the microphone when the utterance's `speech` came; the rest of an utterance is dropped once another session takes the microphone. |
+| The `mic` of `level` | The session holding the microphone. |
 | `spoken`, the `out` of `level` | The session whose speech is playing (`Speaker.client`); each session gets `spoken` once its own lines end, even when another session's line follows. |
 | `log` | Every session, and `engine.log`. |
 | `taken` | The session that held the microphone, when another takes it. |

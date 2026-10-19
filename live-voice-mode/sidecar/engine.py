@@ -46,6 +46,7 @@ class Engine:
         self.clients = {}
         self.ids = itertools.count(1)
         self.owner = None
+        self.hearer = None
         self.lock = threading.Lock()
         self.muted = threading.Event()
         self.muted.set()
@@ -81,7 +82,7 @@ class Engine:
             write(json.dumps({"type": kind, **fields}).encode() + b"\n")
 
     def route(self, event):
-        """Sends an event to the sessions it belongs to: microphone events to its holder, `spoken` to the speech's session, both shares of `level`, `log` to all."""
+        """Sends an event to the sessions it belongs to: microphone events to its holder while it is the `hearer`, the holder when the utterance's `speech` came, `spoken` to the speech's session, both shares of `level`, `log` to all."""
         kind, fields = event.pop("type"), event
 
         if kind == "log":
@@ -95,10 +96,13 @@ class Engine:
         elif kind == "spoken":
             self.tell(self.speaker.client, kind)
         else:
-            self.tell(self.owner, kind, **fields)
-            if kind == "heard" and self.muted.is_set():
-                with self.changing():
-                    self.owner = None
+            with self.changing():
+                if kind == "speech":
+                    self.hearer = self.owner
+                if self.hearer == self.owner:
+                    self.tell(self.owner, kind, **fields)
+                    if kind == "heard" and self.muted.is_set():
+                        self.owner = None
 
     def take(self, client):
         """Gives the microphone to `client`, telling the session that had it and dropping that session's recording."""
@@ -107,6 +111,7 @@ class Engine:
                 self.tell(self.owner, "taken")
                 self.muted.set()
                 self.requests.put("cancel")
+                self.hearer = None
             self.owner = client
 
     def release(self, client, recording):

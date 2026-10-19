@@ -121,7 +121,7 @@ class Routing(unittest.TestCase):
         self.assertTrue(settle(lambda: not engine.present.is_set()))
         self.assertEqual(engine.speaker.stops, 1)
 
-    def test_a_recording_frees_the_microphone_once_heard(self):
+    def test_a_recording_frees_the_microphone_once_heard_and_a_taken_one_is_dropped(self):
         engine, _ = started()
         events.route = engine.route
         (a, first), (b, second) = joined(), joined()
@@ -129,13 +129,24 @@ class Routing(unittest.TestCase):
         post(engine, first, "/talk")
         post(engine, second, "/send")
         self.assertEqual(list(engine.requests.queue), ["talk"])
+        events.emit("speech")
         post(engine, first, "/send")
         events.emit("heard", text="hi")
-        self.assertEqual(next_event(a), {"type": "heard", "text": "hi"})
+        self.assertEqual([next_event(a), next_event(a)], [{"type": "speech"}, {"type": "heard", "text": "hi"}])
         self.assertEqual((engine.owner, list(engine.requests.queue)), (None, ["talk", "send"]))
 
+        post(engine, first, "/talk")
+        events.emit("speech")
         post(engine, second, "/talk")
+        events.emit("partial", text="late")
+        events.emit("heard", text="late")
+        self.assertEqual([next_event(a), next_event(a)], [{"type": "speech"}, {"type": "taken"}])
         self.assertEqual(engine.owner, second)
+
+        events.emit("speech")
+        events.emit("heard", text="mine")
+        self.assertEqual([next_event(b), next_event(b)], [{"type": "speech"}, {"type": "heard", "text": "mine"}])
+        self.assertIsNone(engine.owner)
         a.close(), b.close()
 
 
