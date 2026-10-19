@@ -1,17 +1,20 @@
 """Utterance segmentation with fakes: frames whose first sample is their speech probability, no models, no audio."""
 
 import os
+import queue
 import sys
 import threading
+import types
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "sidecar"))
 
 import numpy as np
+import sounddevice
 
-from live_voice import events
+from live_voice import audio, events
 from live_voice.audio import Segmenter
-from live_voice.config import END_FRAMES, FRAME, MIN_FRAMES, PREROLL_FRAMES, START_FRAMES
+from live_voice.config import CHUNK, END_FRAMES, FRAME, MIN_FRAMES, PREROLL_FRAMES, STALL_SECONDS, START_FRAMES
 
 
 class Fake:
@@ -30,6 +33,9 @@ class Fake:
 
     def is_echo(self):
         return self.echo
+
+    def pull(self, count):
+        return np.zeros(count, np.int16)
 
     def add(self, frame):
         self.added += 1
@@ -103,6 +109,65 @@ class Segmenting(unittest.TestCase):
         self.assertEqual((self.seen, self.fake.stops), ([], 0))
         self.feed(0.9, 1)
         self.assertEqual((self.seen, self.fake.stops), ([{"type": "speech"}], 1))
+
+
+class Frame:
+    def __init__(self, data, *shape):
+        self.data = data
+
+
+class Processing:
+    def __init__(self, **options):
+        pass
+
+    def process_stream(self, frame):
+        pass
+
+    process_reverse_stream = set_stream_delay_ms = process_stream
+
+
+class Stream:
+    """A duplex stream that plays `blocks` blocks of silence when entered, then stalls."""
+
+    blocks = 64
+    latency = (0.01, 0.01)
+
+    def __init__(self, callback, **options):
+        self.callback = callback
+
+    def __enter__(self):
+        for _ in range(self.blocks):
+            self.callback(np.zeros((CHUNK, 1), np.int16), np.zeros((CHUNK, 1), np.int16), CHUNK, None, None)
+        return self
+
+    def __exit__(self, *error):
+        pass
+
+
+class Listening(unittest.TestCase):
+    def setUp(self):
+        self.seen = []
+        self.calls = []
+        events.route = lambda event: event["type"] != "level" and self.seen.append(event)
+        sys.modules["livekit"] = types.SimpleNamespace(rtc=types.SimpleNamespace(AudioProcessingModule=Processing, AudioFrame=Frame))
+        audio.sd = types.SimpleNamespace(
+            _terminate=lambda: self.calls.append("terminate"),
+            _initialize=lambda: self.calls.append("initialize"),
+            query_hostapis=lambda: [{"name": "MME"}, {"name": "Windows WASAPI", "default_input_device": 1, "default_output_device": 2}],
+            Stream=Stream,
+        )
+        audio.STALL_SECONDS = 0.05
+
+    def tearDown(self):
+        events.route = None
+        audio.sd, audio.STALL_SECONDS = sounddevice, STALL_SECONDS
+
+    def test_a_stalled_stream_is_left_after_reading_the_devices_afresh(self):
+        fake, live = Fake(), threading.Event()
+        live.set()
+        audio.listen(fake, fake, fake, fake, threading.Event(), queue.Queue(), live)
+        self.assertEqual(self.calls, ["terminate", "initialize"])
+        self.assertEqual(self.seen, [{"type": "log", "text": "Audio stream stalled; reopening it."}])
 
 
 if __name__ == "__main__":

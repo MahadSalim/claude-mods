@@ -22,6 +22,9 @@ PLAY_RATE = 48000
 FRAME = 512
 CHUNK = 480
 
+# Seconds without a block from the duplex stream before it is reopened.
+STALL_SECONDS = 2.0
+
 # Utterance segmentation, counted in FRAMEs, with VAD speech probabilities.
 PREROLL_FRAMES = 10
 START_FRAMES = 3

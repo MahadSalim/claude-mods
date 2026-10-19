@@ -23,6 +23,7 @@ from .config import (
     PREROLL_FRAMES,
     RATE,
     START_FRAMES,
+    STALL_SECONDS,
     START_PROB,
 )
 from .events import emit
@@ -118,12 +119,15 @@ class Segmenter:
 
 
 def listen(transcriber, speaker, words, detector, muted, requests, live):
-    """Plays the speaker's audio, reads the echo-cancelled microphone while `live` is set, and emits each utterance it hears.
+    """Plays the speaker's audio, reads the echo-cancelled microphone of the current default devices while `live` is set, and emits each utterance it hears.
 
     `requests` carries "talk", "send" and "cancel" for a manual recording, which ignores `muted` and silence.
+    Returns early when the stream delivers nothing for STALL_SECONDS.
     """
     from livekit import rtc
 
+    sd._terminate()
+    sd._initialize()
     apm = rtc.AudioProcessingModule(echo_cancellation=True, high_pass_filter=True)
     wasapi = next(api for api in sd.query_hostapis() if "WASAPI" in api["name"])
     devices = (wasapi["default_input_device"], wasapi["default_output_device"])
@@ -143,7 +147,11 @@ def listen(transcriber, speaker, words, detector, muted, requests, live):
         apm.set_stream_delay_ms(int(sum(stream.latency) * 1000))
 
         while live.is_set():
-            samples = np.concatenate([samples, chunks.get()])
+            try:
+                samples = np.concatenate([samples, chunks.get(timeout=STALL_SECONDS)])
+            except queue.Empty:
+                emit("log", text="Audio stream stalled; reopening it.")
+                break
 
             if len(samples) >= FRAME:
                 frame, samples = samples[:FRAME], samples[FRAME:]
