@@ -143,7 +143,7 @@ def listen(transcriber, speaker, words, detector, muted, requests, live):
         clean = np.frombuffer(mic.data, dtype=np.int16).astype(np.float32) / 32768
         chunks.put(clean.reshape(-1, PLAY_RATE // RATE).mean(axis=1))
 
-    with sd.Stream(device=devices, samplerate=PLAY_RATE, blocksize=CHUNK, channels=1, dtype="int16", callback=on_audio) as stream:
+    with sd.Stream(device=devices, samplerate=PLAY_RATE, blocksize=CHUNK, channels=1, dtype="int16", callback=on_audio, extra_settings=sd.WasapiSettings(auto_convert=True)) as stream:
         apm.set_stream_delay_ms(int(sum(stream.latency) * 1000))
 
         while live.is_set():

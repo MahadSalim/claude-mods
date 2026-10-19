@@ -133,11 +133,12 @@ class Stream:
     latency = (0.01, 0.01)
 
     def __init__(self, callback, **options):
-        self.callback = callback
+        self.callback, self.options = callback, options
 
     def __enter__(self):
         for _ in range(self.blocks):
             self.callback(np.zeros((CHUNK, 1), np.int16), np.zeros((CHUNK, 1), np.int16), CHUNK, None, None)
+        Stream.opened = self.options
         return self
 
     def __exit__(self, *error):
@@ -155,6 +156,7 @@ class Listening(unittest.TestCase):
             _initialize=lambda: self.calls.append("initialize"),
             query_hostapis=lambda: [{"name": "MME"}, {"name": "Windows WASAPI", "default_input_device": 1, "default_output_device": 2}],
             Stream=Stream,
+            WasapiSettings=lambda **options: options,
         )
         audio.STALL_SECONDS = 0.05
 
@@ -167,6 +169,7 @@ class Listening(unittest.TestCase):
         live.set()
         audio.listen(fake, fake, fake, fake, threading.Event(), queue.Queue(), live)
         self.assertEqual(self.calls, ["terminate", "initialize"])
+        self.assertEqual((Stream.opened["device"], Stream.opened["extra_settings"]), ((1, 2), {"auto_convert": True}))
         self.assertEqual(self.seen, [{"type": "log", "text": "Audio stream stalled; reopening it."}])
 
 
