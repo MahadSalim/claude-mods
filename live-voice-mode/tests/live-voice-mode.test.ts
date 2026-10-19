@@ -606,6 +606,7 @@ test('the panel shows loading while the engine restarts, and an engine that quit
 
   await restarted.open()
   expect(await head(band)).toBe('READY')
+  expect(toasts.filter(toast => toast.startsWith('Voice mode on'))).toHaveLength(1)
   await band.press({ key: 'voice-mute' })
   expect([spoken.at(-1), clients.at(-1)]).toEqual(['http://127.0.0.1:5555/talk ', '2'])
 

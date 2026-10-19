@@ -253,12 +253,14 @@ const stop = async ($: EngineInterface) => {
 const handle = async ($: EngineInterface, event: SidecarEvent) => {
   switch (event.type) {
     case 'ready':
+      if (live.client === undefined) {
+        $.ui.toast(`Voice mode on (${event.device}). Say "stop voice mode" to end.`)
+      }
       live.port = event.port
       live.client = event.client
       if (!(await read($, muted)) && (await read($, mode)) === 'handsFree') {
         await post($, '/unmute')
       }
-      $.ui.toast(`Voice mode on (${event.device}). Say "stop voice mode" to end.`)
       return setStatus($, 'listening')
     case 'loading':
       live.port = undefined
