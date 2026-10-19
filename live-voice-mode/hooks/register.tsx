@@ -452,7 +452,7 @@ export const register: Register = on => {
     const going = e.reason === 'answer' && !said.ended
     const text = going ? speakable(said.sent ? said.text.slice(said.sent) : e.answer) : ''
 
-    if (text || (going && said.sent)) {
+    if (going && (text || said.sent)) {
       await speak($, text)
     } else {
       await setStatus($, idle())
@@ -488,7 +488,7 @@ export const register: Register = on => {
           </Box>
           <Box flexDirection="row" columnGap={2}>
             {animated && <Client key="voice-meter" module="./voice-panel.tsx" props={{ part: 'meter', look, color, ...(await read($, levels)) }} />}
-            <Text dimColor italic={!!heard}>{clip(heard || (now === 'thinking' && busy) || hint,e.props.bodyColumns - FRAME_COLUMNS - (animated ? METER_COLUMNS + 2 : 0))}</Text>
+            <Text dimColor italic={!!heard}>{clip(heard || (now === 'thinking' && busy) || hint, e.props.bodyColumns - FRAME_COLUMNS - (animated ? METER_COLUMNS + 2 : 0))}</Text>
           </Box>
           <Box flexDirection="row" columnGap={1}>
             <Button key="voice-mute" label={primaryLabel(now, isMuted, tap)} hotkey="m" action="app:toggleDiffPreSession" onPress={() => press($)} />
