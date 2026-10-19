@@ -86,8 +86,12 @@ const SENTENCE_END = /[.!?]\s|\n/g
 const PAUSE = /[,.!?]\s|\n|^(\S+\s+){8}/g
 
 /** How much of `text` makes whole phrases: up to its last `pause` outside a code block, 0 when none. */
-const cut = (text: string, pause: RegExp) =>
-  Math.max(0, ...[...text.matchAll(pause)].map(match => match.index + match[0].length).filter(end => text.slice(0, end).split('```').length % 2))
+const cut = (text: string, pause: RegExp) => {
+  const open = text.split('```').length % 2 ? text.length : text.lastIndexOf('```')
+  const last = [...text.slice(0, open).replace(/```[\s\S]*?```/g, block => 'x'.repeat(block.length)).matchAll(pause)].at(-1)
+
+  return last ? last.index + last[0].length : 0
+}
 
 const setStatus = ($: EngineInterface, next: VoiceStatus) => update($, status, () => next)
 
