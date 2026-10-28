@@ -1,0 +1,6 @@
+{
+  "name": "files-pane",
+  "version": "0.1.0",
+  "description": "A Files pane: project tree, filename and content search, and a file viewer with open tabs",
+  "types": "./types/index.d.ts"
+}

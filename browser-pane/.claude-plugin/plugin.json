@@ -1,0 +1,6 @@
+{
+  "name": "browser-pane",
+  "version": "0.1.0",
+  "description": "A text-mode browser pane with tabs, history and a launcher for the dev servers in .claude/launch.json.",
+  "types": "./types/index.d.ts"
+}

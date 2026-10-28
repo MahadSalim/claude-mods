@@ -1,0 +1,6 @@
+{
+  "name": "changes-pane",
+  "version": "0.1.0",
+  "description": "A Changes pane: the repository's changed files and their diffs, with stage, unstage and discard",
+  "types": "./types/index.d.ts"
+}

@@ -1,8 +1,12 @@
 {
   "name": "claude-mods",
-  "description": "Mods for Claude Code: a usage log.",
+  "description": "Mods for Claude Code: a usage log, a session rail, and Changes, Files and Browser panes.",
   "owner": { "name": "MahadSalim" },
   "plugins": [
-    { "name": "usage-log", "source": "./usage-log" }
+    { "name": "usage-log", "source": "./usage-log" },
+    { "name": "session-rail", "source": "./session-rail" },
+    { "name": "changes-pane", "source": "./changes-pane" },
+    { "name": "files-pane", "source": "./files-pane" },
+    { "name": "browser-pane", "source": "./browser-pane" }
   ]
 }
