@@ -9,6 +9,9 @@ import { fullText } from './text'
 
 type Question = 'discard' | 'reset'
 
+/** The text classes that the viewer and the editor share, so the text stays in place when you click Edit. */
+const TEXT = 'm-0 min-h-0 flex-1 overflow-auto px-4 py-3.5 font-mono text-[13px] leading-relaxed'
+
 /** The prompt, the keep label, and the confirm label of each question the viewer asks before it drops text. */
 const QUESTIONS: Record<Question, [string, string, string]> = {
   discard: ['Discard your unsaved changes?', 'Keep editing', 'Discard'],
@@ -81,10 +84,10 @@ export function TextDialog({ item: openItem, onAct, onClose }: Props) {
                 spellCheck={false}
                 value={draft}
                 onChange={e => setDraft(e.target.value)}
-                className="min-h-0 flex-1 resize-none rounded-none border-0 px-4 py-3.5 font-mono text-[13px] leading-relaxed focus-visible:ring-0"
+                className={`${TEXT} resize-none rounded-none border-0 shadow-none focus-visible:ring-0 md:text-[13px] dark:bg-transparent`}
               />
             ) : (
-              <pre className="min-h-0 flex-1 overflow-auto px-4 py-3.5 font-mono text-[13px] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">{fullText(item)}</pre>
+              <pre className={`${TEXT} whitespace-pre-wrap [overflow-wrap:anywhere]`}>{fullText(item)}</pre>
             )}
             {(asking || isEditing) && (
               <footer className="flex items-center justify-end gap-2 border-t px-4 py-3">

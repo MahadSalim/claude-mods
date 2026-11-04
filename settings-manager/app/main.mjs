@@ -208,7 +208,7 @@ function commands(catalog) {
 function tools(catalog, settings) {
   const deny = settings.permissions?.deny ?? []
   const items = Object.entries(catalog.tools ?? {}).map(([name, entry]) => ({
-    title: name,
+    title: entry.mcp ? name.split('__').slice(2).join('__') || name : name,
     description: entry.description ?? '',
     group: entry.mcp ? `MCP: ${name.split('__')[1] ?? 'other'}` : 'Built-in tools',
     value: !deny.includes(name),
@@ -227,7 +227,7 @@ async function general(settings) {
   const options = (...values) => values.map(value => (Array.isArray(value) ? { value: value[0], label: value[1] } : { value, label: value }))
   return grouped([
     row('Model', 'Model', 'The model that new sessions use.', ['model'], 'select', { options: options(['', 'Default'], 'opus', 'sonnet', 'haiku', 'fable', 'opusplan') }),
-    row('Model', 'Effort', 'How hard Claude thinks before it answers.', ['effortLevel'], 'segmented', { options: options('low', 'medium', 'high', 'xhigh', 'max') }),
+    row('Model', 'Effort', 'How hard Claude thinks before it answers.', ['effortLevel'], 'segmented', { options: options(['', 'Default'], 'low', 'medium', 'high', 'xhigh', 'max') }),
     row('Model', 'Thinking', 'Turn on extended thinking by default.', ['alwaysThinkingEnabled'], 'switch'),
     row('Model', 'Fast mode', 'Use faster output where the model offers it.', ['fastMode'], 'switch'),
     row('Model', 'Output style', 'How Claude structures its answers.', ['outputStyle'], 'select', { options: options(['', 'Default'], 'Explanatory', 'Learning', ...styles) }),

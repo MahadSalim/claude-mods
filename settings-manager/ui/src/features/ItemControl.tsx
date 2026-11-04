@@ -18,9 +18,9 @@ export function ItemControl({ item, onAct }: Props) {
 
   if (control === 'segmented')
     return (
-      <ToggleGroup type="single" variant="outline" value={String(item.value ?? '')} onValueChange={value => value && set(value)}>
+      <ToggleGroup type="single" variant="outline" value={String(item.value ?? '') || EMPTY} onValueChange={value => value && set(value === EMPTY ? '' : value)}>
         {item.options?.map(option => (
-          <ToggleGroupItem key={option.value} value={option.value} className="px-3">
+          <ToggleGroupItem key={option.value} value={option.value || EMPTY} className="px-3">
             {option.label}
           </ToggleGroupItem>
         ))}
