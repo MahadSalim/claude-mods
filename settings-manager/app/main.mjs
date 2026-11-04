@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs'
 import fs from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { homedir } from 'node:os'
+import nodePath from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DIRS, DISABLED, FILES, fileName, frontmatter, join } from './shared.mjs'
 
@@ -12,6 +13,14 @@ const self = fileURLToPath(import.meta.url)
 const [root = join(homedir(), '.claude'), mode] = process.argv.slice(2)
 const at = (...parts) => join(root, ...parts)
 const serverFile = at(DIRS.data, FILES.server)
+
+/** Like `at`, for paths that come from the window: throws if the path leaves the config folder. */
+function inside(...parts) {
+  const full = at(...parts)
+  const rel = nodePath.relative(nodePath.resolve(root), nodePath.resolve(full))
+  if (!rel || rel === '..' || rel.startsWith(`..${nodePath.sep}`) || nodePath.isAbsolute(rel)) throw new Error(`${parts.join('/')} is outside the config folder.`)
+  return full
+}
 
 const readText = path => fs.readFile(path, 'utf8').catch(() => undefined)
 const readJson = async (path, fallback) => {
@@ -262,19 +271,30 @@ const move = async (from, to) => {
   await fs.rename(from, to)
 }
 
+/** Reads settings.json, applies `change` and writes it back. A file with a JSON error is left as it is. */
 async function editSettings(change) {
-  const path = at('settings.json')
-  const settings = await readJson(path, {})
+  const file = at('settings.json')
+  const text = await readText(file)
+  let settings = {}
+  if (text !== undefined && text.trim()) {
+    try {
+      settings = JSON.parse(text)
+    } catch (error) {
+      throw new Error(`settings.json has a JSON error, so Settings Manager did not change it. Fix the file first.\n${error.message}`)
+    }
+  }
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw new Error('settings.json does not hold a JSON object, so Settings Manager did not change it.')
   change(settings)
-  await writeJson(path, settings)
+  await writeJson(file, settings)
 }
 
 const ACTIONS = {
   async move({ dir, name }, isOn) {
-    const [on, off] = [at(dir, name), at(dir, DISABLED, name)]
+    const [on, off] = [inside(dir, name), inside(dir, DISABLED, name)]
     await (isOn ? move(off, on) : move(on, off))
   },
   async marker({ dir, name }, isOn) {
+    inside(dir, DISABLED, `${fileName(name)}.json`)
     await (isOn ? fs.rm(markerPath(dir, name), { force: true }) : writeJson(markerPath(dir, name), { name }))
   },
   async setting({ key, invert, number }, value) {
@@ -292,9 +312,10 @@ const ACTIONS = {
     })
   },
   async hook({ event, id }, isOn) {
-    const saved = at(DIRS.hooks, DISABLED, `${id}.json`)
+    const saved = inside(DIRS.hooks, DISABLED, `${id}.json`)
     if (isOn) {
-      const { group } = await readJson(saved, {})
+      const { group } = (await readJson(saved, undefined)) ?? {}
+      if (!group || typeof group !== 'object') throw new Error('This hook is no longer saved in hooks/disabled. Reload the window.')
       await editSettings(settings => ((settings.hooks ??= {})[event] ??= []).push(group))
       return fs.rm(saved)
     }
@@ -302,21 +323,23 @@ const ACTIONS = {
     await editSettings(settings => {
       const groups = settings.hooks?.[event] ?? []
       group = groups.find(item => hash([event, item]) === id)
+      if (!group) throw new Error('This hook is no longer in settings.json. Reload the window.')
       settings.hooks[event] = groups.filter(item => item !== group)
       if (!settings.hooks[event].length) delete settings.hooks[event]
     })
-    if (group) await writeJson(saved, { event, group })
+    await writeJson(saved, { event, group })
   },
   async edit({ path, text }) {
-    await fs.writeFile(at(path), text)
+    await fs.writeFile(inside(path), text)
   },
   async reset({ path, key }) {
+    const target = inside(path)
     const defaults = await readJson(at(DIRS.data, FILES.defaults), {})
     if (defaults[key] === undefined) throw new Error(`No original text is saved for ${key} yet.`)
-    await fs.writeFile(at(path), defaults[key])
+    await fs.writeFile(target, defaults[key])
   },
   async reveal({ folder }) {
-    const target = at(folder).replace(/\//g, process.platform === 'win32' ? '\\' : '/')
+    const target = (folder ? inside(folder) : at()).replace(/\//g, process.platform === 'win32' ? '\\' : '/')
     await fs.mkdir(target, { recursive: true })
     openExternal(target)
   },
