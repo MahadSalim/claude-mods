@@ -38,6 +38,21 @@ function split(total: number, items: { name: string; chars: number }[]): Part[] 
   return byTokens(items.map(item => ({ name: item.name, tokens: chars ? (total * item.chars) / chars : 0, isEstimate: true })))
 }
 
+/** About how many characters of English text make one token. */
+const CHARS_PER_TOKEN = 3.5
+
+/**
+ * Splits the system prompt's total among its sections. The desktop app adds its own text to the system prompt,
+ * which the mod never sees. So when the sections are much shorter than the total, each section gets its estimate
+ * by length, and the rest is one row of its own.
+ */
+function splitPrompt(total: number, sections: { name: string; chars: number }[]): Part[] {
+  const guessed = sections.reduce((n, section) => n + section.chars, 0) / CHARS_PER_TOKEN
+  if (guessed >= total * 0.85) return split(total, sections)
+  const parts = byTokens(sections.map(section => ({ name: section.name, tokens: section.chars / CHARS_PER_TOKEN, isEstimate: true })))
+  return [{ name: 'Added by the app (the mod cannot see or change it)', tokens: total - guessed, isEstimate: true, isMuted: true }, ...parts]
+}
+
 /** The MCP tools grouped by server, the biggest server first, each server with its tools. */
 function byServer(tools: Context['mcpTools'], connectors: Record<string, string>): Part[] {
   const servers = new Map<string, Context['mcpTools']>()
@@ -58,7 +73,7 @@ function byServer(tools: Context['mcpTools'], connectors: Record<string, string>
 function partsOf(category: Context['categories'][number], context: Context, connectors: Record<string, string>): Part[] | undefined {
   const name = category.name.toLowerCase()
   const builtIn = context.tools ?? []
-  if (name === 'system prompt' && context.sections?.length) return split(category.tokens, context.sections)
+  if (name === 'system prompt' && context.sections?.length) return splitPrompt(category.tokens, context.sections)
   if (name === 'system tools' && builtIn.length) return split(category.tokens, builtIn.filter(tool => !tool.isDeferred))
   if (name === 'system tools (deferred)' && builtIn.length) return split(category.tokens, builtIn.filter(tool => tool.isDeferred))
   if (name === 'mcp tools') return byServer(context.mcpTools.filter(tool => tool.isLoaded), connectors)
@@ -97,6 +112,11 @@ function Row({ part, max, color, depth = 0, isDeferred }: { part: Part; max: num
         <span className="w-16 flex-none text-right tabular-nums text-muted-foreground">{isDeferred ? '—' : `${mark}${percent(part.tokens, max)}`}</span>
       </button>
       {isOpen && part.parts!.map(child => <Row key={child.name} part={child} max={max} depth={depth + 1} isDeferred={isDeferred} />)}
+      {isOpen && part.parts!.some(child => child.isMuted) && (
+        <div className="py-1 text-[12px] text-muted-foreground" style={{ paddingLeft: (depth + 1) * 22 + 28 }}>
+          Turned-off sections are not sent, so they are not listed.
+        </div>
+      )}
     </>
   )
 }
