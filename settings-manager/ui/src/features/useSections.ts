@@ -1,26 +1,28 @@
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import * as api from '@/api'
-import type { Act, Section, Value } from '@/types'
+import type { Act, State, Value } from '@/types'
 
 const showError = (error: unknown) => toast.error(error instanceof Error ? error.message : String(error), { id: 'error', className: 'whitespace-pre-wrap' })
 
-/** The sections from the window server, reloaded when the window gets focus, and a function that runs an action. */
+/** Runs an action. `label` names the change for the Undo button. Resolves to true when the action worked. */
+export type OnAct = (action: Act, value: Value | null, label?: string) => Promise<boolean>
+
+/** The sections from the window server, reloaded when the window gets focus, and functions that run an action or undo one. */
 export function useSections() {
-  const [sections, setSections] = useState<Section[]>([])
+  const [state, setState] = useState<State>({ sections: [] })
   const run = useCallback(
-    (request: Promise<Section[]>) =>
+    (request: Promise<State>) =>
       request.then(
-        sections => (setSections(sections), true),
+        state => (setState(state), true),
         error => (showError(error), false),
       ),
     [],
   )
-  /** Runs an action. After a failed action it reloads, so the window shows what is on disk. */
-  const act = useCallback(
-    (action: Act, value: Value | null) => run(api.act(action, value)).then(ok => ok || run(api.load())),
-    [run],
-  )
+  /** After a failed action or undo, the window reloads, so it shows what is on disk. */
+  const orReload = useCallback((ok: boolean) => ok || run(api.load()).then(() => false), [run])
+  const act: OnAct = useCallback((action, value, label) => run(api.act(action, value, label)).then(orReload), [run, orReload])
+  const undo = useCallback(() => run(api.undo()).then(orReload), [run, orReload])
 
   useEffect(() => {
     const reload = () => run(api.load())
@@ -30,5 +32,5 @@ export function useSections() {
     return () => (removeEventListener('focus', reload), clearInterval(timer))
   }, [run])
 
-  return { sections, act }
+  return { sections: state.sections, lastChange: state.undo, act, undo }
 }

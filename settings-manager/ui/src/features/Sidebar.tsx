@@ -1,4 +1,4 @@
-import { createLucideIcon, FileText, PlugZap, Puzzle, Search, SlidersHorizontal, Sparkles, SquareTerminal, WandSparkles, Wrench, type LucideIcon } from 'lucide-react'
+import { createLucideIcon, FileText, PlugZap, Puzzle, Search, SlidersHorizontal, Sparkles, SquareTerminal, Variable, WandSparkles, Wrench, type LucideIcon } from 'lucide-react'
 import { Fragment } from 'react'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
@@ -24,6 +24,7 @@ export const SECTION_ICONS: Record<string, LucideIcon> = {
   plugins: Puzzle,
   hooks: PlugZap,
   general: SlidersHorizontal,
+  env: Variable,
 }
 
 /** Sections that have a divider after them. */

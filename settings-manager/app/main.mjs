@@ -246,13 +246,29 @@ async function general(settings) {
   ], ['Model', 'Permissions', 'Behavior', 'Sync'])
 }
 
+/** Parts of a variable name, between underscores, that mark its value as secret. The window hides it until you click the eye button. */
+const SECRET_PARTS = new Set(['KEY', 'APIKEY', 'TOKEN', 'SECRET', 'PASSWORD', 'PASSWD', 'PASS', 'PWD', 'AUTH', 'CREDENTIAL', 'CREDENTIALS', 'PAT', 'PRIVATE', 'COOKIE'])
+const isSecret = name => name.toUpperCase().split('_').some(part => SECRET_PARTS.has(part)) || /(KEY|TOKEN|SECRET|PASSWORD)$/i.test(name)
+
+function env(settings) {
+  const items = Object.entries(settings.env ?? {}).map(([name, value]) => ({
+    title: name,
+    group: 'Variables',
+    value: typeof value === 'string' ? value : JSON.stringify(value),
+    control: 'env',
+    isSecret: isSecret(name),
+    act: { type: 'env', name },
+  }))
+  return grouped(items)
+}
+
 async function model() {
   const [settings, catalog, defaults] = await Promise.all([
     readJson(at('settings.json'), {}),
     readJson(at(DIRS.data, FILES.catalog), {}),
     readJson(at(DIRS.data, FILES.defaults), {}),
   ])
-  const section = async (id, title, folder, note, groups) => ({ id, title, folder, note, groups: await groups })
+  const section = async (id, title, folder, note, groups, empty) => ({ id, title, folder, note, empty, groups: await groups })
   return Promise.all([
     section('skills', 'Skills', DIRS.skills, 'Turned-off skills move to skills/disabled. Changes reach Claude in new sessions.', skills(catalog)),
     section('prompts', 'System prompt', DIRS.prompts, 'Each section is a file in prompts. Edit a section to change what Claude reads.', prompts(catalog, defaults)),
@@ -262,7 +278,64 @@ async function model() {
     section('plugins', 'Plugins', 'plugins', 'Plugins and mods load in new sessions, or after /reload-plugins.', plugins(settings)),
     section('hooks', 'Hooks', DIRS.hooks, 'Turned-off settings hooks move to hooks/disabled.', hooks(settings)),
     section('general', 'General', '', 'Settings from settings.json.', general(settings)),
+    section('env', 'Environment', '', 'Variables from env in settings.json. Claude Code sets them in new sessions.', env(settings), 'No variables are set.'),
   ])
+}
+
+/** The undo history: the last changes, newest last. Each holds the files and moves that it made. */
+const HISTORY_SIZE = 50
+const historyFile = at(DIRS.data, FILES.history)
+let history = await readJson(historyFile, [])
+if (!Array.isArray(history)) history = []
+
+/** Collects what one action changes: the text of each file before and after, and each move. */
+function newChange() {
+  const files = new Map()
+  return {
+    files,
+    moves: [],
+    /** Saves the text of a file before the action writes or deletes it. Call it before every write. */
+    async track(path) {
+      if (!files.has(path)) files.set(path, (await readText(path)) ?? null)
+    },
+  }
+}
+
+/** Saves a finished change in the history, unless it changed nothing. */
+async function remember(change, label) {
+  const files = []
+  for (const [path, before] of change.files) {
+    const after = (await readText(path)) ?? null
+    if (after !== before) files.push({ path, before, after })
+  }
+  if (!files.length && !change.moves.length) return
+  history = [...history, { label, files, moves: change.moves }].slice(-HISTORY_SIZE)
+  await writeJson(historyFile, history)
+}
+
+/** Undoes the last change. Throws, and drops the change, if a file changed after it. */
+async function undo() {
+  const last = history.at(-1)
+  if (!last) throw new Error('Nothing to undo.')
+  const changed = []
+  for (const file of last.files) if (((await readText(file.path)) ?? null) !== file.after) changed.push(file.path)
+  for (const { from, to } of last.moves) if (!existsSync(to) || existsSync(from)) changed.push(to)
+  if (changed.length) {
+    // The change can never be undone now, so it leaves the history and Undo moves on to the change before it.
+    history = history.slice(0, -1)
+    await writeJson(historyFile, history)
+    throw new Error(`Settings Manager can't undo "${last.label}", because this changed after it:\n${changed.join('\n')}\nIt is removed from the undo list.`)
+  }
+  for (const { from, to } of [...last.moves].reverse()) await move(to, from)
+  for (const file of last.files) {
+    if (file.before === null) await fs.rm(file.path, { force: true })
+    else {
+      await fs.mkdir(file.path.replace(/\/[^/]*$/, ''), { recursive: true })
+      await fs.writeFile(file.path, file.before)
+    }
+  }
+  history = history.slice(0, -1)
+  await writeJson(historyFile, history)
 }
 
 const move = async (from, to) => {
@@ -271,8 +344,15 @@ const move = async (from, to) => {
   await fs.rename(from, to)
 }
 
-/** Reads settings.json, applies `change` and writes it back. A file with a JSON error is left as it is. */
-async function editSettings(change) {
+/** Writes a file and saves its old text in `change` first. */
+async function write(change, path, text) {
+  await change.track(path)
+  await fs.mkdir(path.replace(/\/[^/]*$/, ''), { recursive: true })
+  await fs.writeFile(path, text)
+}
+
+/** Reads settings.json, applies `edit` and writes it back. A file with a JSON error is left as it is. */
+async function editSettings(change, edit) {
   const file = at('settings.json')
   const text = await readText(file)
   let settings = {}
@@ -284,43 +364,61 @@ async function editSettings(change) {
     }
   }
   if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw new Error('settings.json does not hold a JSON object, so Settings Manager did not change it.')
-  change(settings)
-  await writeJson(file, settings)
+  edit(settings)
+  await write(change, file, JSON.stringify(settings, null, 2) + '\n')
 }
 
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
+
+/** Each action changes files on disk. `change` collects what it changes, so the change can be undone. */
 const ACTIONS = {
-  async move({ dir, name }, isOn) {
+  async move({ dir, name }, isOn, change) {
     const [on, off] = [inside(dir, name), inside(dir, DISABLED, name)]
-    await (isOn ? move(off, on) : move(on, off))
+    const [from, to] = isOn ? [off, on] : [on, off]
+    await move(from, to)
+    change.moves.push({ from, to })
   },
-  async marker({ dir, name }, isOn) {
-    inside(dir, DISABLED, `${fileName(name)}.json`)
-    await (isOn ? fs.rm(markerPath(dir, name), { force: true }) : writeJson(markerPath(dir, name), { name }))
+  async marker({ dir, name }, isOn, change) {
+    const path = inside(dir, DISABLED, `${fileName(name)}.json`)
+    await change.track(path)
+    await (isOn ? fs.rm(path, { force: true }) : writeJson(path, { name }))
   },
-  async setting({ key, invert, number }, value) {
+  async setting({ key, invert, number }, value, change) {
     const next = invert ? !value : number && value !== '' ? Number(value) : value
-    await editSettings(settings => {
+    await editSettings(change, settings => {
       const parent = key.slice(0, -1).reduce((node, part) => (node[part] ??= {}), settings)
       if (next === '' || next === null || Number.isNaN(next)) delete parent[key.at(-1)]
       else parent[key.at(-1)] = next
     })
   },
-  async deny({ rule }, isOn) {
-    await editSettings(settings => {
+  async deny({ rule }, isOn, change) {
+    await editSettings(change, settings => {
       const deny = ((settings.permissions ??= {}).deny ??= []).filter(item => item !== rule)
       settings.permissions.deny = isOn ? deny : [...deny, rule]
     })
   },
-  async hook({ event, id }, isOn) {
+  /** Sets a variable in `env`. A null value deletes it. `isNew` refuses a name that is already there. */
+  async env({ name, isNew }, value, change) {
+    if (typeof name !== 'string' || !ENV_NAME.test(name)) throw new Error('A variable name uses only letters, digits and _, and it does not start with a digit.')
+    await editSettings(change, settings => {
+      const vars = (settings.env ??= {})
+      if (isNew && name in vars) throw new Error(`${name} is already set.`)
+      if (value === null) delete vars[name]
+      else vars[name] = String(value)
+      if (!Object.keys(vars).length) delete settings.env
+    })
+  },
+  async hook({ event, id }, isOn, change) {
     const saved = inside(DIRS.hooks, DISABLED, `${id}.json`)
+    await change.track(saved)
     if (isOn) {
       const { group } = (await readJson(saved, undefined)) ?? {}
       if (!group || typeof group !== 'object') throw new Error('This hook is no longer saved in hooks/disabled. Reload the window.')
-      await editSettings(settings => ((settings.hooks ??= {})[event] ??= []).push(group))
+      await editSettings(change, settings => ((settings.hooks ??= {})[event] ??= []).push(group))
       return fs.rm(saved)
     }
     let group
-    await editSettings(settings => {
+    await editSettings(change, settings => {
       const groups = settings.hooks?.[event] ?? []
       group = groups.find(item => hash([event, item]) === id)
       if (!group) throw new Error('This hook is no longer in settings.json. Reload the window.')
@@ -329,20 +427,31 @@ const ACTIONS = {
     })
     await writeJson(saved, { event, group })
   },
-  async edit({ path, text }) {
-    await fs.writeFile(inside(path), text)
+  async edit({ path, text }, _value, change) {
+    await write(change, inside(path), text)
   },
-  async reset({ path, key }) {
+  async reset({ path, key }, _value, change) {
     const target = inside(path)
     const defaults = await readJson(at(DIRS.data, FILES.defaults), {})
     if (defaults[key] === undefined) throw new Error(`No original text is saved for ${key} yet.`)
-    await fs.writeFile(target, defaults[key])
+    await write(change, target, defaults[key])
   },
   async reveal({ folder }) {
     const target = (folder ? inside(folder) : at()).replace(/\//g, process.platform === 'win32' ? '\\' : '/')
     await fs.mkdir(target, { recursive: true })
     openExternal(target)
   },
+}
+
+/** Runs an action and saves what it changed in the history, even when it fails part way. */
+async function run(act, value, label) {
+  if (!Object.hasOwn(ACTIONS, act?.type)) throw new Error(`Unknown action: ${act?.type}`)
+  const change = newChange()
+  try {
+    await ACTIONS[act.type](act, value, change)
+  } finally {
+    await remember(change, typeof label === 'string' && label ? label : 'the last change')
+  }
 }
 
 function detached(command, args) {
@@ -423,10 +532,11 @@ async function serve() {
       if (req.method === 'POST' && url.pathname === '/api/act') {
         let body = ''
         for await (const chunk of req) body += chunk
-        const { act, value } = JSON.parse(body)
-        await ACTIONS[act.type](act, value)
+        const { act, value, label } = JSON.parse(body)
+        await run(act, value, label)
       }
-      if (url.pathname.startsWith('/api/')) return send(res, 200, JSON.stringify({ root, sections: await model() }), 'application/json')
+      if (req.method === 'POST' && url.pathname === '/api/undo') await undo()
+      if (url.pathname.startsWith('/api/')) return send(res, 200, JSON.stringify({ root, sections: await model(), undo: history.at(-1)?.label }), 'application/json')
       send(res, 404, 'Not found')
     } catch (error) {
       send(res, 500, String(error?.message ?? error))

@@ -10,7 +10,7 @@ import { useSections } from './useSections'
 
 /** The Settings Manager window. */
 export function SettingsApp() {
-  const { sections, act } = useSections()
+  const { sections, lastChange, act, undo } = useSections()
   const [current, setCurrent] = useState('skills')
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState<Item>()
@@ -33,7 +33,7 @@ export function SettingsApp() {
         />
         <main ref={main} className="flex-1 overflow-y-auto px-8 pt-5.5 pb-15">
           <div key={search ? 'search' : section?.id} className="mx-auto max-w-[880px] animate-in duration-150 fade-in">
-            {search ? <SearchResults sections={sections} query={search} {...rowProps} /> : section && <SectionView section={section} {...rowProps} />}
+            {search ? <SearchResults sections={sections} query={search} {...rowProps} /> : section && <SectionView section={section} lastChange={lastChange} onUndo={undo} {...rowProps} />}
           </div>
         </main>
       </div>

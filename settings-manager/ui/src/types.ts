@@ -13,7 +13,9 @@ export type Item = {
   badge?: string
   isEdited?: boolean
   value?: Value
-  control?: 'switch' | 'segmented' | 'select' | 'text'
+  control?: 'switch' | 'segmented' | 'select' | 'text' | 'env'
+  /** True for a variable whose value the window hides until you click the eye button. */
+  isSecret?: boolean
   options?: Option[]
   act: Act
   edit?: Edit
@@ -22,7 +24,10 @@ export type Item = {
 
 export type Group = { title: string; items: Item[] }
 
-export type Section = { id: string; title: string; note: string; folder: string; groups: Group[] }
+export type Section = { id: string; title: string; note: string; folder: string; empty?: string; groups: Group[] }
+
+/** What the window server sends: the sections, and a label for the change that Undo would undo. */
+export type State = { sections: Section[]; undo?: string }
 
 declare global {
   interface Window {

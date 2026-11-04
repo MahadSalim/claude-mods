@@ -13,7 +13,7 @@ export const DIRS = {
 export const DISABLED = 'disabled'
 
 /** Files that the mod and the window both read, under `DIRS.data`. */
-export const FILES = { catalog: 'catalog.json', defaults: 'prompt-defaults.json', server: 'server.json' }
+export const FILES = { catalog: 'catalog.json', defaults: 'prompt-defaults.json', server: 'server.json', history: 'history.json' }
 
 /** Turns an id into a file or folder name that every file system accepts. */
 export const fileName = id => id.replace(/:/g, '__').replace(/[<>"/\\|?*\x00-\x1f]/g, '_')

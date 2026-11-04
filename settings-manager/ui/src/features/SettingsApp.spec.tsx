@@ -27,15 +27,34 @@ const SECTIONS: Section[] = [
     note: 'Settings from settings.json.',
     groups: [{ title: 'Model', items: [{ title: 'Model', control: 'select', value: '', options: [{ value: '', label: 'Default' }, { value: 'opus', label: 'opus' }], act: { type: 'setting', key: ['model'] } }] }],
   },
+  {
+    id: 'env',
+    title: 'Environment',
+    folder: '',
+    note: 'Variables from env in settings.json.',
+    groups: [
+      {
+        title: 'Variables',
+        items: [
+          { title: 'API_KEY', value: 'sk-123', control: 'env', isSecret: true, act: { type: 'env', name: 'API_KEY' } },
+          { title: 'DEBUG', value: '1', control: 'env', act: { type: 'env', name: 'DEBUG' } },
+        ],
+      },
+    ],
+  },
 ]
+
+/** The label that the fake server sends for the last change. */
+let lastChange: string | undefined
 
 const posts: unknown[] = []
 
 beforeEach(() => {
   posts.length = 0
-  vi.stubGlobal('fetch', vi.fn(async (_path: string, init?: RequestInit) => {
-    if (init?.body) posts.push(JSON.parse(String(init.body)))
-    return new Response(JSON.stringify({ sections: SECTIONS }))
+  lastChange = undefined
+  vi.stubGlobal('fetch', vi.fn(async (path: string, init?: RequestInit) => {
+    if (init?.body) posts.push({ path, ...JSON.parse(String(init.body)) })
+    return new Response(JSON.stringify({ sections: SECTIONS, undo: lastChange }))
   }))
 })
 
@@ -43,7 +62,7 @@ test('shows the first section and runs a switch action', async () => {
   render(<SettingsApp />)
   await screen.findByText('my-grill-me')
   await userEvent.click(screen.getByRole('switch', { name: 'plain' }))
-  await waitFor(() => expect(posts).toEqual([{ act: { type: 'move', name: 'plain' }, value: true }]))
+  await waitFor(() => expect(posts).toEqual([{ path: '/api/act', act: { type: 'move', name: 'plain' }, value: true, label: 'Turn on plain' }]))
 })
 
 test('opens a skill with full text, edits it and saves', async () => {
@@ -54,7 +73,7 @@ test('opens a skill with full text, edits it and saves', async () => {
   await userEvent.click(within(dialog).getByRole('button', { name: 'Edit' }))
   await userEvent.type(within(dialog).getByRole('textbox'), '!')
   await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
-  await waitFor(() => expect(posts).toContainEqual({ act: { type: 'edit', path: 'skills/my-grill-me/SKILL.md', text: '# Grill!' }, value: null }))
+  await waitFor(() => expect(posts).toContainEqual({ path: '/api/act', act: { type: 'edit', path: 'skills/my-grill-me/SKILL.md', text: '# Grill!' }, value: null, label: 'Edit my-grill-me' }))
 })
 
 test('asks before it drops unsaved edits', async () => {
@@ -89,4 +108,46 @@ test('shows the empty value of a select as its Default option', async () => {
   render(<SettingsApp />)
   await userEvent.click(await screen.findByText('General'))
   expect(screen.getByRole('combobox', { name: 'Model' })).toHaveTextContent('Default')
+})
+
+test('hides a secret value until you click the eye button', async () => {
+  render(<SettingsApp />)
+  await userEvent.click(await screen.findByText('Environment'))
+  expect(screen.getByRole('textbox', { name: 'DEBUG' })).toHaveValue('1')
+  const key = screen.getByLabelText('API_KEY')
+  expect(key).toHaveAttribute('type', 'password')
+  await userEvent.click(screen.getByRole('button', { name: 'Show API_KEY' }))
+  expect(key).toHaveAttribute('type', 'text')
+})
+
+test('changes, deletes and adds variables', async () => {
+  render(<SettingsApp />)
+  await userEvent.click(await screen.findByText('Environment'))
+  const debug = screen.getByRole('textbox', { name: 'DEBUG' })
+  await userEvent.clear(debug)
+  await userEvent.type(debug, '2{Enter}')
+  await userEvent.click(screen.getByRole('button', { name: 'Delete API_KEY' }))
+  await userEvent.type(screen.getByLabelText('New variable name'), ' MY_VAR ')
+  await userEvent.type(screen.getByLabelText('New variable value'), 'on{Enter}')
+  await waitFor(() =>
+    expect(posts).toEqual([
+      { path: '/api/act', act: { type: 'env', name: 'DEBUG' }, value: '2', label: 'Change DEBUG' },
+      { path: '/api/act', act: { type: 'env', name: 'API_KEY' }, value: null, label: 'Delete API_KEY' },
+      { path: '/api/act', act: { type: 'env', name: 'MY_VAR', isNew: true }, value: 'on', label: 'Add MY_VAR' },
+    ]),
+  )
+  await waitFor(() => expect(screen.getByLabelText('New variable name')).toHaveValue(''))
+})
+
+test('the Undo button undoes the last change', async () => {
+  render(<SettingsApp />)
+  await screen.findByText('my-grill-me')
+  expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
+  lastChange = 'Turn on plain'
+  await userEvent.click(screen.getByRole('switch', { name: 'plain' }))
+  const undo = await screen.findByRole('button', { name: 'Undo: Turn on plain' })
+  lastChange = undefined
+  await userEvent.click(undo)
+  await waitFor(() => expect(posts.at(-1)).toEqual({ path: '/api/undo' }))
+  expect(await screen.findByRole('button', { name: 'Undo' })).toBeDisabled()
 })

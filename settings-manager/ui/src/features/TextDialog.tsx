@@ -3,9 +3,10 @@ import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
-import type { Act, Item, Value } from '@/types'
+import type { Item } from '@/types'
 import { Badges } from './ItemRow'
 import { fullText } from './text'
+import type { OnAct } from './useSections'
 
 type Question = 'discard' | 'reset'
 
@@ -18,7 +19,7 @@ const QUESTIONS: Record<Question, [string, string, string]> = {
   reset: ["Reset to Claude's original text? Your edits will be lost.", 'Cancel', 'Reset'],
 }
 
-type Props = { item: Item | undefined; onAct: (action: Act, value: Value | null) => void; onClose: () => void }
+type Props = { item: Item | undefined; onAct: OnAct; onClose: () => void }
 
 /** The text viewer, which has an Edit button for editable text. */
 export function TextDialog({ item: openItem, onAct, onClose }: Props) {
@@ -41,11 +42,11 @@ export function TextDialog({ item: openItem, onAct, onClose }: Props) {
     onClose()
   }
   const save = () => {
-    if (item?.edit) onAct({ type: 'edit', path: item.edit.path, text: draft }, null)
+    if (item?.edit) onAct({ type: 'edit', path: item.edit.path, text: draft }, null, `Edit ${item.title}`)
     close(true)
   }
   const confirm = () => {
-    if (asking === 'reset' && item?.edit) onAct({ type: 'reset', ...item.edit }, null)
+    if (asking === 'reset' && item?.edit) onAct({ type: 'reset', ...item.edit }, null, `Reset ${item.title}`)
     close(true)
   }
 

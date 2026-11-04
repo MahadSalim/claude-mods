@@ -1,8 +1,9 @@
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import type { Act, Item, Value } from '@/types'
+import type { Item } from '@/types'
 import { ItemControl } from './ItemControl'
-import { fullText } from './text'
+import { changeLabel, fullText } from './text'
+import type { OnAct } from './useSections'
 
 /** The scope badge and the "edited" badge of an item. */
 export function Badges({ item }: { item: Item }) {
@@ -14,7 +15,7 @@ export function Badges({ item }: { item: Item }) {
   )
 }
 
-type Props = { item: Item; onAct: (action: Act, value: Value) => void; onOpen: (item: Item) => void }
+type Props = { item: Item; onAct: OnAct; onOpen: (item: Item) => void }
 
 /** One row: the title, description and badges, and the control. Rows with full text open in the viewer. */
 export function ItemRow({ item, onAct, onOpen }: Props) {
@@ -39,7 +40,7 @@ export function ItemRow({ item, onAct, onOpen }: Props) {
         {item.description && <div className="mt-0.5 truncate text-[13.5px] text-muted-foreground">{item.description}</div>}
       </div>
       <div className="flex flex-none items-center gap-2" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
-        <ItemControl item={item} onAct={onAct} />
+        <ItemControl item={item} onSet={value => onAct(item.act, value, changeLabel(item, value))} />
       </div>
     </div>
   )

@@ -1,18 +1,58 @@
+import { Eye, EyeOff, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import type { Act, Item, Value } from '@/types'
+import type { Item, Value } from '@/types'
 
 /** The Select value that stands for an empty setting value. */
 const EMPTY = '\u0000'
 
-type Props = { item: Item; onAct: (action: Act, value: Value) => void }
+type Props = { item: Item; onSet: (value: Value | null) => void }
 
-/** The control for one row: a switch, a segmented choice, a dropdown, or a text field. */
-export function ItemControl({ item, onAct }: Props) {
+/** A text field that saves when it loses focus or when you press Enter. */
+function TextField({ item, onSet, isHidden, className = 'w-56', placeholder = 'Default' }: Props & { isHidden?: boolean; className?: string; placeholder?: string }) {
+  const commit = (value: string) => value !== String(item.value ?? '') && onSet(value)
+  return (
+    <Input
+      key={String(item.value ?? '')}
+      type={isHidden ? 'password' : 'text'}
+      className={className}
+      placeholder={placeholder}
+      aria-label={item.title}
+      defaultValue={String(item.value ?? '')}
+      onBlur={e => commit(e.target.value)}
+      onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()}
+    />
+  )
+}
+
+/** An environment variable: its value, an eye button for secret values, and a delete button. */
+function EnvControl({ item, onSet }: Props) {
+  const [isShown, setIsShown] = useState(false)
+  return (
+    <>
+      {item.isSecret && (
+        <Button variant="ghost" size="icon" title={isShown ? 'Hide value' : 'Show value'} aria-label={isShown ? `Hide ${item.title}` : `Show ${item.title}`} onClick={() => setIsShown(!isShown)}>
+          {isShown ? <EyeOff /> : <Eye />}
+        </Button>
+      )}
+      <TextField item={item} onSet={onSet} isHidden={item.isSecret && !isShown} placeholder="Empty" className="w-72 font-mono text-[13px] md:text-[13px]" />
+      <Button variant="ghost" size="icon" title="Delete" aria-label={`Delete ${item.title}`} className="text-muted-foreground hover:text-destructive" onClick={() => onSet(null)}>
+        <Trash2 />
+      </Button>
+    </>
+  )
+}
+
+/** The control for one row: a switch, a segmented choice, a dropdown, a text field or a variable. */
+export function ItemControl({ item, onSet }: Props) {
   const control = item.control ?? 'switch'
-  const set = (value: Value) => onAct(item.act, value)
+  const set = (value: Value) => onSet(value)
+
+  if (control === 'env') return <EnvControl item={item} onSet={onSet} />
 
   if (control === 'switch') return <Switch checked={!!item.value} aria-label={item.title} onCheckedChange={set} className="data-[state=checked]:bg-[#4cc2ff] data-[state=checked]:hover:bg-[#47b1e8]" />
 
@@ -46,16 +86,5 @@ export function ItemControl({ item, onAct }: Props) {
     )
   }
 
-  const commit = (value: string) => value !== String(item.value ?? '') && set(value)
-  return (
-    <Input
-      key={String(item.value ?? '')}
-      className="w-56"
-      placeholder="Default"
-      aria-label={item.title}
-      defaultValue={String(item.value ?? '')}
-      onBlur={e => commit(e.target.value)}
-      onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()}
-    />
-  )
+  return <TextField item={item} onSet={onSet} />
 }

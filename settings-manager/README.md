@@ -17,10 +17,17 @@ Run `/settings-manager` to open the window. The window needs Node.js on PATH. On
 | Plugins | `enabledPlugins` in `settings.json`. |
 | Hooks | A turned-off settings hook moves from `settings.json` to `.claude/hooks/disabled/<id>.json`. |
 | General | Model, effort, output style, permission mode and other keys in `settings.json`. |
+| Environment | `env` in `settings.json`. Values of names such as `API_KEY` or `GITHUB_TOKEN` are hidden until you click the eye button. |
 
 The mod keeps Claude Code's original text for each section and reminder in `.claude/settings-manager/prompt-defaults.json`, and updates it when Claude Code's text changes. The mod writes `.claude/settings-manager/catalog.json` with the items that it sees in sessions. The window reads it, so start a session with the mod loaded before you open the window.
 
 Most changes reach Claude in new sessions.
+
+## Undo
+
+The Undo button at the top of each page undoes the last change that the window made. Click it again to undo the change before that. The window keeps the last 50 changes in `.claude/settings-manager/history.json`, with the text of each file before and after the change. That file can hold the values of your environment variables, the same as `settings.json`.
+
+Undo checks each file first. If a file changed after the window changed it, Undo leaves the file as it is, shows which file changed, and removes that change from the list.
 
 ## Install
 
