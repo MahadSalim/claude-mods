@@ -10,6 +10,8 @@ export type Edit = { path: string; text: string; key?: string; isEdited?: boolea
 export type Item = {
   title: string
   description?: string
+  /** A one-sentence summary that a model wrote, shown in place of the description's first line. */
+  summary?: string
   badge?: string
   isEdited?: boolean
   value?: Value
@@ -47,10 +49,17 @@ export type Context = {
   agents: ({ name: string; source: string } & Tokens)[]
   memoryFiles: ({ path: string; type: string } & Tokens)[]
   commands?: { count: number } & Tokens
+  /** The length of each system prompt section; Claude Code counts only the total, which is split by these. */
+  sections?: { name: string; chars: number }[]
+  /** The length of each built-in tool's description, split the same way. */
+  tools?: { name: string; chars: number; isDeferred: boolean }[]
 }
 
-/** What the window server sends: the sections, each session's context use, and a label for the change that Undo would undo. */
-export type State = { sections: Section[]; contexts?: Context[]; undo?: string }
+/**
+ * What the window server sends: the sections, each session's context use, the names of Claude.ai connectors
+ * by id, and a label for the change that Undo would undo.
+ */
+export type State = { sections: Section[]; contexts?: Context[]; connectors?: Record<string, string>; undo?: string }
 
 declare global {
   interface Window {

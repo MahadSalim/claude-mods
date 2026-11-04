@@ -9,7 +9,7 @@ import { createServer } from 'node:http'
 import { homedir } from 'node:os'
 import nodePath from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { CONTEXT_KEEP, DIRS, DISABLED, DISABLED_KINDS, FILES, fileName, frontmatter, join, parseDisabled } from './shared.mjs'
+import { CONTEXT_KEEP, DIRS, DISABLED, DISABLED_KINDS, FILES, REMINDER_NOTES, SAVED_REMINDERS, fileName, frontmatter, join, parseDisabled } from './shared.mjs'
 
 const self = fileURLToPath(import.meta.url)
 const [root = join(homedir(), '.claude'), mode] = process.argv.slice(2)
@@ -30,14 +30,15 @@ function inside(...parts) {
 const readText = path => fs.readFile(path, 'utf8').catch(() => undefined)
 const readJson = async (path, fallback) => {
   try {
-    return JSON.parse(await fs.readFile(path, 'utf8'))
+    return JSON.parse((await fs.readFile(path, 'utf8')).replace(/^﻿/, ''))
   } catch {
     return fallback
   }
 }
-const writeJson = async (path, value) => {
+/** Writes JSON. `mode` 0o600 keeps a file that holds secrets, such as the undo history, to its owner on macOS and Linux. */
+const writeJson = async (path, value, mode) => {
   await fs.mkdir(path.replace(/\/[^/]*$/, ''), { recursive: true })
-  await fs.writeFile(path, JSON.stringify(value, null, 2) + '\n')
+  await fs.writeFile(path, JSON.stringify(value, null, 2) + '\n', mode ? { mode } : undefined)
 }
 const list = async (dir, isDir) =>
   (await fs.readdir(at(dir), { withFileTypes: true }).catch(() => []))
@@ -66,9 +67,16 @@ const SKILL_GROUPS = {
 
 /** The switch of an item that `disabled.json` lists by name. */
 const switchFor = (disabled, kind, name) => ({ value: !disabled[kind].includes(name), act: { type: 'disable', kind, name } })
+const switchForName = switchFor
 
 /** Your skill folders, then every other skill that a session saw. */
-async function skills(catalog, disabled) {
+async function skills(catalog, disabled, settings) {
+  // Claude Code's own `skillOverrides: { name: "off" }` also turns a skill off, so such a skill shows as off.
+  const overrides = isObject(settings.skillOverrides) ? settings.skillOverrides : {}
+  const switchFor = (disabled, kind, name) => {
+    const row = switchForName(disabled, kind, name)
+    return overrides[name] === 'off' ? { ...row, value: false, isDisabled: true, badge: 'off in skillOverrides' } : row
+  }
   const items = []
   const yours = new Set()
   for (const folder of await list(DIRS.skills, true)) {
@@ -114,171 +122,336 @@ function editable(edits, key, path, text) {
 /** The id that a file name stands for: the catalog's id whose file name it is, else the name itself. */
 const idOf = (entries, base) => Object.keys(entries ?? {}).find(id => fileName(id) === base) ?? base
 
-async function prompts(catalog, edits, disabled) {
+async function prompts(catalog, edits, disabled, summaries) {
   const sections = await files(DIRS.prompts, 'Sections', (base, text) => {
     const id = idOf(catalog.sections, base)
     const { isEdited, edit } = editable(edits, base, join(DIRS.prompts, `${base}.md`), text)
-    return { title: id, description: firstLine(text), badge: catalog.sections?.[id]?.scope, isEdited, order: catalog.sections?.[id]?.order ?? 999, edit, ...switchFor(disabled, 'sections', id) }
+    const summary = summaries[`sections/${id}`]?.text
+    return { title: id, description: firstLine(text), summary, badge: catalog.sections?.[id]?.scope, isEdited, order: catalog.sections?.[id]?.order ?? 999, edit, ...switchFor(disabled, 'sections', id) }
   })
-  const reminders = await files(DIRS.reminders, 'Reminders', (base, text) => {
-    const type = idOf(catalog.reminders, base)
-    return {
-      title: type,
-      description: firstLine(text),
-      ...editable(edits, `${DIRS.reminders}/${base}`, join(DIRS.reminders, `${base}.md`), text),
-      ...switchFor(disabled, 'reminders', type),
-    }
-  })
+  const reminders = (
+    await files(DIRS.reminders, 'Reminders', (base, text) => {
+      const type = idOf(catalog.reminders, base)
+      if (!SAVED_REMINDERS.has(type)) return undefined
+      return {
+        title: type,
+        description: firstLine(text),
+        summary: summaries[`reminders/${type}`]?.text,
+        ...editable(edits, `${DIRS.reminders}/${base}`, join(DIRS.reminders, `${base}.md`), text),
+        ...switchFor(disabled, 'reminders', type),
+      }
+    })
+  ).filter(item => item.title)
+  // Reminders whose text can hold private data are never saved, so they come from the catalog, with no text to edit.
+  const shown = new Set(reminders.map(item => item.title))
+  for (const type of Object.keys(catalog.reminders ?? {})) {
+    if (shown.has(type) || SAVED_REMINDERS.has(type)) continue
+    reminders.push({ title: type, description: REMINDER_NOTES[type] ?? 'Its text can hold details of your session, so the mod does not save it.', group: 'Reminders', ...switchFor(disabled, 'reminders', type) })
+  }
   return grouped([...sections, ...reminders], ['Sections', 'Reminders'])
 }
 
+/** The mods built into Claude Code, from the mods overview, and whether each is on when settings do not say. */
 const BUILT_IN_MODS = {
-  'cc-plugin-agents-md@builtin': 'Loads AGENTS.md as project instructions.',
-  'cc-plugin-diff@builtin': 'Draws the /diff pane.',
-  'cc-plugin-plugin-authoring@builtin': 'Gives Claude the skill for writing mods.',
-  'cc-plugin-telemetry@builtin': 'Sends the usage records that Claude Code logs.',
+  'cc-plugin-agents-md@builtin': { description: 'Loads AGENTS.md as project instructions.', on: true },
+  'cc-plugin-diff@builtin': { description: 'Draws the /diff pane.', on: true },
+  'cc-plugin-plugin-authoring@builtin': { description: 'Gives Claude the skill for writing mods.', on: true },
+  'cc-plugin-telemetry@builtin': { description: 'Sends the usage records that Claude Code logs.', on: true },
+  'cc-plugin-you-should-know@builtin': { description: 'Shows tips about Claude Code features.', on: false },
 }
+
+/** Group names for plugins that come from no marketplace. */
+const PLUGIN_SOURCES = { inline: 'Session plugins (--plugin-dir)', 'skills-dir': 'Skill-folder plugins', synced: 'Synced from Claude.ai' }
 
 async function plugins(settings) {
   const installed = (await readJson(at('plugins', 'installed_plugins.json'), {})).plugins ?? {}
-  const enabled = settings.enabledPlugins ?? {}
-  const keys = new Set([...Object.keys(installed), ...Object.keys(enabled), ...Object.keys(BUILT_IN_MODS)])
-  const items = []
-  for (const key of keys) {
-    const [name, marketplace = ''] = key.split('@')
-    const install = installed[key]?.[0]
-    const manifest = install ? await readJson(join(install.installPath, '.claude-plugin', 'plugin.json'), {}) : {}
-    const isBuiltIn = key in BUILT_IN_MODS
-    items.push({
-      title: name,
-      description: BUILT_IN_MODS[key] ?? manifest.description ?? key,
-      badge: install?.version,
-      group: isBuiltIn ? 'Built-in mods' : `From ${marketplace}`,
-      value: isBuiltIn ? enabled[key] !== false : enabled[key] === true,
-      act: { type: 'setting', key: ['enabledPlugins', key] },
-    })
-  }
+  const enabled = isObject(settings.enabledPlugins) ? settings.enabledPlugins : {}
+  // Plugins in skill folders load as `<name>@skills-dir` and are on unless turned off.
+  const skillDirPlugins = (await list(DIRS.skills, true)).filter(folder => existsSync(at(DIRS.skills, folder, '.claude-plugin', 'plugin.json')))
+  const skillDirKeys = Object.fromEntries(skillDirPlugins.map(folder => [`${folder}@skills-dir`, at(DIRS.skills, folder)]))
+  const keys = new Set([...Object.keys(installed), ...Object.keys(enabled), ...Object.keys(BUILT_IN_MODS), ...Object.keys(skillDirKeys)])
+  const items = await Promise.all(
+    [...keys].map(async key => {
+      const [name, marketplace = ''] = key.split('@')
+      const records = Array.isArray(installed[key]) ? installed[key] : []
+      // A user install is the one that settings.json turns on; a project install belongs to its project.
+      const install = records.find(record => record.scope === 'user') ?? records[0]
+      const folder = install?.installPath ?? skillDirKeys[key]
+      const manifest = folder ? await readJson(join(folder, '.claude-plugin', 'plugin.json'), {}) : {}
+      const builtIn = BUILT_IN_MODS[key]
+      const isLocalSource = marketplace in PLUGIN_SOURCES
+      const isProjectOnly = !!install && !records.some(record => record.scope === 'user')
+      const isMissing = !install && !builtIn && !isLocalSource
+      const isSelf = name === 'settings-manager'
+      // A plugin is on when settings do not say otherwise, unless its manifest sets defaultEnabled to false.
+      const isOnByDefault = builtIn ? builtIn.on : manifest.defaultEnabled !== false
+      const notes = [
+        isSelf && 'Turn this mod off with /plugin. Everything in disabled.json then turns back on.',
+        isProjectOnly && `Installed only for ${install.projectPath ?? 'a project'}; turn it on or off there.`,
+        isMissing && 'Not installed. Turning it on would make Claude Code download it.',
+      ].filter(Boolean)
+      return {
+        title: manifest.displayName ?? name,
+        description: [builtIn?.description ?? manifest.description ?? key, ...notes].join(' '),
+        badge: isMissing ? 'not installed' : install && install.scope !== 'user' ? `${install.version} · ${install.scope}` : install?.version,
+        group: builtIn ? 'Built-in mods' : (PLUGIN_SOURCES[marketplace] ?? `From ${marketplace}`),
+        value: typeof enabled[key] === 'boolean' ? enabled[key] : isOnByDefault,
+        isDisabled: isSelf || isProjectOnly || isMissing,
+        act: { type: 'setting', key: ['enabledPlugins', key], def: isOnByDefault },
+      }
+    }),
+  )
   return grouped(items)
 }
 
+const isObject = value => !!value && typeof value === 'object' && !Array.isArray(value)
+
+/**
+ * The id of each hook group of one event: a hash of the event and the group, with `.2`, `.3` and so on for a group
+ * that repeats an earlier one, so that two identical groups can each be turned off. Entries that are not hook
+ * groups get no id; Claude Code warns about them and skips them.
+ */
+function hookIds(event, groups) {
+  const seen = new Map()
+  return (Array.isArray(groups) ? groups : []).map(group => {
+    if (!isObject(group)) return undefined
+    const base = hash([event, group])
+    const n = (seen.get(base) ?? 0) + 1
+    seen.set(base, n)
+    return n > 1 ? `${base}.${n}` : base
+  })
+}
+
+/** A key for `disabled.hooks` that no saved hook has yet. */
+const freeHookKey = (saved, id) => {
+  let key = id
+  while (Object.hasOwn(saved, key)) key = `${id}.${randomBytes(3).toString('hex')}`
+  return key
+}
+
+/** One handler as a line: its command and arguments, URL, prompt or MCP tool, after its `if` filter. */
+function describeHook(hook) {
+  if (!isObject(hook)) return ''
+  const what =
+    hook.type === 'mcp_tool' ? `${hook.server} ${hook.tool}` : [hook.command, ...(Array.isArray(hook.args) ? hook.args : [])].filter(Boolean).join(' ') || hook.url || hook.prompt || hook.type
+  return (hook.if ? `[${hook.if}] ` : '') + what
+}
+
 async function hooks(settings, disabled) {
-  const describe = group => (group.hooks ?? []).map(hook => hook.command ?? hook.url ?? hook.prompt ?? hook.type).join('  ·  ')
-  const row = (event, group, isOn, id = hash([event, group])) => ({
+  const allOff = settings.disableAllHooks === true
+  const row = (event, group, isOn, id) => ({
     title: group.matcher ? `${event} · ${group.matcher}` : event,
-    description: describe(group),
+    description: (Array.isArray(group.hooks) ? group.hooks : []).map(describeHook).join('  ·  '),
+    view: JSON.stringify(group, null, 2),
     group: 'Settings hooks',
     value: isOn,
+    isDisabled: allOff,
     act: { type: 'hook', event, id },
   })
-  const items = Object.entries(settings.hooks ?? {}).flatMap(([event, groups]) => groups.map(group => row(event, group, true)))
+  const items = Object.entries(isObject(settings.hooks) ? settings.hooks : {}).flatMap(([event, groups]) => {
+    const ids = hookIds(event, groups)
+    return ids.flatMap((id, i) => (id ? [row(event, groups[i], true, id)] : []))
+  })
   for (const [id, saved] of Object.entries(disabled.hooks)) {
-    if (saved?.group && typeof saved.group === 'object') items.push(row(saved.event, saved.group, false, id))
+    if (isObject(saved?.group) && typeof saved.event === 'string') items.push(row(saved.event, saved.group, false, id))
   }
   const all = {
     title: 'Run hooks',
-    description: 'Run the hooks from settings files and plugins. Off sets disableAllHooks.',
+    description: 'Off sets disableAllHooks in your user settings. A project’s settings can turn hooks back on, and managed hooks still run.',
     group: 'All hooks',
-    value: settings.disableAllHooks !== true,
-    act: { type: 'setting', key: ['disableAllHooks'], invert: true },
+    value: !allOff,
+    act: { type: 'setting', key: ['disableAllHooks'], invert: true, def: false },
   }
   return grouped([all, ...items], ['All hooks', 'Settings hooks'])
 }
 
+const AGENT_GROUPS = {
+  userSettings: 'Your subagents',
+  projectSettings: 'Project subagents',
+  policySettings: 'Managed subagents',
+  flagSettings: 'Session subagents (--agents)',
+  'built-in': 'Built-in subagents',
+  plugin: 'Plugin subagents',
+}
+
+/**
+ * Your subagent files, in `agents` and its subfolders, which Claude Code also reads, then every other subagent
+ * that a session offered. A file without a `name` is not loaded by Claude Code, so it gets no row.
+ */
 async function agents(catalog, disabled) {
-  const items = await files(DIRS.agents, 'Your subagents', (base, text) => {
-    const meta = frontmatter(text)
-    const name = meta.name ?? base
-    return { title: name, description: meta.description ?? '', ...switchFor(disabled, 'agents', name) }
-  })
-  const fileNames = new Set(items.map(item => item.title))
-  for (const [name, entry] of Object.entries(catalog.agents ?? {})) {
-    if (fileNames.has(name)) continue
+  const paths = (await fs.readdir(at(DIRS.agents), { recursive: true }).catch(() => []))
+    .map(path => path.replace(/\\/g, '/'))
+    .filter(path => path.endsWith('.md') && !path.startsWith(`${DISABLED}/`))
+  const items = []
+  for (const path of paths) {
+    const text = ((await readText(at(DIRS.agents, path))) ?? '').replace(/\r\n/g, '\n')
+    const name = frontmatter(text).name
+    if (!name) continue
     items.push({
       title: name,
-      description: entry.description ?? '',
-      group: entry.source === 'built-in' ? 'Built-in subagents' : entry.source === 'plugin' ? 'Plugin subagents' : 'Other subagents',
+      // The catalog holds the description as Claude Code parsed it, which a multi-line YAML value needs.
+      description: catalog.agents?.[name]?.description || frontmatter(text).description || '',
+      group: AGENT_GROUPS.userSettings,
+      edit: { path: join(DIRS.agents, path), text },
+      ...(catalog.agents?.[name]?.source === 'built-in' || ['Explore', 'Plan', 'general-purpose'].includes(name) ? { badge: 'replaces the built-in' } : {}),
       ...switchFor(disabled, 'agents', name),
     })
   }
-  return grouped(items, ['Your subagents', 'Built-in subagents', 'Plugin subagents'])
+  const fileNames = new Set(items.map(item => item.title))
+  for (const [name, entry] of Object.entries(catalog.agents ?? {})) {
+    if (fileNames.has(name)) continue
+    items.push({ title: name, description: entry.description ?? '', group: AGENT_GROUPS[entry.source] ?? 'Other subagents', ...switchFor(disabled, 'agents', name) })
+  }
+  return grouped(items, Object.values(AGENT_GROUPS))
 }
 
 const COMMAND_GROUPS = { builtin: 'Built-in commands', user: 'Your commands', plugin: 'Plugin commands', mcp: 'MCP prompts' }
 
-function commands(catalog, disabled) {
+/** Commands that the window never turns off, so you can always manage plugins and this mod. The mod refuses them too. */
+const PROTECTED_COMMANDS = new Set(['plugin', 'reload-plugins', 'exit', 'help', 'login', 'settings-manager'])
+
+async function commands(catalog, disabled) {
+  // Skills also show as commands; they belong to the Skills section, your own skill folders too.
   const skillNames = new Set(Object.keys(catalog.skills ?? {}))
+  for (const folder of await list(DIRS.skills, true)) {
+    const md = await readText(at(DIRS.skills, folder, 'SKILL.md'))
+    if (md) skillNames.add(frontmatter(md).name ?? folder).add(folder)
+  }
   const items = Object.entries(catalog.commands ?? {})
-    .filter(([name]) => !skillNames.has(name) && name !== 'settings-manager')
-    .map(([name, entry]) => ({
-      title: `/${name}`,
-      description: entry.description ?? '',
-      group: COMMAND_GROUPS[entry.source] ?? 'Other commands',
-      ...switchFor(disabled, 'commands', name),
-    }))
+    .filter(([name]) => !skillNames.has(name) && name !== 'settings-manager' && !name.startsWith('__'))
+    .map(([name, entry]) => {
+      const isProtected = PROTECTED_COMMANDS.has(name)
+      return {
+        title: `/${name}`,
+        description: [entry.description, isProtected && 'Always on, so you can manage plugins and this mod.'].filter(Boolean).join(' '),
+        group: COMMAND_GROUPS[entry.source] ?? 'Other commands',
+        ...switchFor(disabled, 'commands', name),
+        ...(isProtected && { value: true, isDisabled: true }),
+      }
+    })
   return grouped(items, Object.values(COMMAND_GROUPS))
 }
 
+/** Tools that a deny rule cannot remove, as the permissions docs say. */
+const UNREMOVABLE = new Set(['EndConversation'])
+
+/** What else a deny rule on these tools does, from the docs. */
+const TOOL_NOTES = {
+  ToolSearch: 'Off makes MCP tools load up front instead of on demand, which can use much more context.',
+  Edit: 'A deny on Edit also covers Write and NotebookEdit.',
+  Read: 'A deny on Read also blocks Edit and Write.',
+}
+
+/** A glob in a deny rule, where `*` matches any run of characters. */
+const globTest = (pattern, name) => new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`).test(name)
+
+/** True when a deny rule removes the whole tool: its bare name, `Name(*)`, or a glob such as `*` or `B*`. */
+const removesTool = (rule, name) => rule === name || rule === `${name}(*)` || (!rule.includes('(') && rule.includes('*') && globTest(rule, name))
+
+/** Days after which a tool that no session has seen leaves the list, unless a deny rule names it. */
+const STALE_DAYS = 30
+
 function tools(catalog, settings) {
   const deny = settings.permissions?.deny ?? []
-  const items = Object.entries(catalog.tools ?? {})
-    .filter(([, entry]) => !entry.mcp)
-    .map(([name, entry]) => ({
-      title: name,
-      description: entry.description ?? '',
-      group: 'Built-in tools',
-      value: !deny.includes(name),
-      act: { type: 'deny', rule: name },
-    }))
+  const entries = Object.entries(catalog.tools ?? {}).filter(([, entry]) => !entry.mcp)
+  // A denied tool leaves Claude Code's tool list, so a session never sees it: a bare rule still gets its row.
+  for (const rule of deny) if (/^[A-Z]\w*$/.test(rule) && !catalog.tools?.[rule]) entries.push([rule, {}])
+  const cutoff = new Date(Date.now() - STALE_DAYS * 86400000).toISOString().slice(0, 10)
+  const items = entries
+    .filter(([name, entry]) => !entry.seenAt || entry.seenAt >= cutoff || deny.some(rule => removesTool(rule, name)))
+    .map(([name, entry]) => {
+      const scoped = deny.filter(rule => rule.startsWith(`${name}(`) && rule !== `${name}(*)`)
+      const byOtherRule = deny.some(rule => rule !== name && rule !== `${name}(*)` && removesTool(rule, name))
+      const notes = [
+        UNREMOVABLE.has(name) && 'Claude Code does not let a deny rule remove this tool.',
+        byOtherRule && 'A wider deny rule, such as *, removes this tool.',
+        scoped.length > 0 && `Denied only for: ${scoped.join(', ')}`,
+        TOOL_NOTES[name],
+      ].filter(Boolean)
+      return {
+        title: name,
+        description: [entry.description, ...notes].filter(Boolean).join(' '),
+        badge: scoped.length ? `${scoped.length} scoped deny` : undefined,
+        group: 'Built-in tools',
+        value: UNREMOVABLE.has(name) || !deny.some(rule => removesTool(rule, name)),
+        isDisabled: UNREMOVABLE.has(name) || byOtherRule,
+        act: { type: 'deny', rule: name },
+      }
+    })
   return grouped(items, ['Built-in tools'])
 }
 
-/** A server name that is an id, as claude.ai connectors have, is shown as a short connector name. */
-const serverTitle = server => (/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(server) ? `Claude.ai connector ${server.slice(0, 8)}` : server)
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * A server's name for people: a Claude.ai connector by the name that the desktop app gave the mod
+ * (`connectors.json`), `claude_ai_X` as "claude.ai X", and a plugin's server with its plugin.
+ */
+function serverTitle(server, connectors = {}) {
+  if (UUID.test(server)) return connectors[server] ?? `Claude.ai connector ${server.slice(0, 8)}`
+  if (server.startsWith('claude_ai_')) return `claude.ai ${server.slice(10).replace(/_/g, ' ')}`
+  const plugin = /^plugin_([^_]+)_(.+)$/.exec(server)
+  return plugin ? `${plugin[2]} (plugin ${plugin[1]})` : server
+}
 
 /** A server's name as it appears in its tools' names, `mcp__<server>__<tool>`. */
 const toolServerName = server => server.replace(/[^a-zA-Z0-9_-]/g, '_')
+
+/** Where Claude Code keeps .claude.json: in the config folder when CLAUDE_CONFIG_DIR sets one, else in the home folder. */
+const claudeJson = () => (existsSync(at('.claude.json')) ? at('.claude.json') : join(homedir(), '.claude.json'))
 
 /**
  * The servers set up only in a project: in a project's entry of .claude.json, or in the .mcp.json of a project
  * that .claude.json lists. A server that is also set up at user level is not one of them.
  */
 async function projectOnlyServers(config, userServers) {
-  const names = new Set()
-  for (const [path, project] of Object.entries(config.projects ?? {})) {
-    for (const server of Object.keys(project?.mcpServers ?? {})) names.add(server)
-    for (const server of Object.keys((await readJson(join(path, '.mcp.json'), {})).mcpServers ?? {})) names.add(server)
-  }
+  const projects = Object.entries(config.projects ?? {})
+  const files = await Promise.all(projects.map(([path]) => readJson(join(path, '.mcp.json'), {})))
+  const names = new Set(projects.flatMap(([, project], i) => [...Object.keys(project?.mcpServers ?? {}), ...Object.keys(files[i].mcpServers ?? {})]))
   for (const server of userServers) names.delete(server)
   return new Set([...names].map(toolServerName))
 }
 
+/** The rules that turn a whole server off. The docs lead with `mcp__<server>__*`; `mcp__<server>` does the same. */
+const serverRules = server => [`mcp__${server}__*`, `mcp__${server}`]
+
 /**
- * One group per user-level MCP server: the servers in .claude.json, and the servers whose tools a session saw,
- * such as the desktop app's own servers and Claude.ai connectors. Servers set up only in a project are left out.
- * The group's own switch, beside its name, turns the whole server off with the deny rule `mcp__<server>`.
- * Each row turns off one tool; while the server is off, the rows keep their own state but cannot be changed.
+ * One group per user-level MCP server: the servers in .claude.json, the servers whose tools a session saw, such as
+ * the desktop app's own servers and Claude.ai connectors, and the servers and tools that a deny rule names, which
+ * Claude Code no longer lists. Servers set up only in a project are left out. The group's own switch, beside its
+ * name, turns the whole server off. Each row turns off one tool; while the server is off, the rows keep their own
+ * state but cannot be changed.
  */
-async function mcp(catalog, settings) {
+async function mcp(catalog, settings, summaries, connectors) {
   const deny = settings.permissions?.deny ?? []
-  const config = await readJson(at('.claude.json'), {})
+  const config = await readJson(claudeJson(), {})
   const userServers = Object.keys(config.mcpServers ?? {})
   const projectOnly = await projectOnlyServers(config, userServers)
   const servers = new Map(userServers.map(server => [toolServerName(server), []]))
-  for (const [name, entry] of Object.entries(catalog.tools ?? {})) {
-    if (!entry.mcp) continue
-    const [, server = 'other', ...rest] = name.split('__')
-    if (projectOnly.has(server)) continue
-    if (!servers.has(server)) servers.set(server, [])
-    servers.get(server).push({ name, tool: rest.join('__') || name, description: entry.description ?? '' })
+  // The longest known server name that a tool name starts with, so a server whose name holds `__` stays whole.
+  const known = [...new Set([...servers.keys(), ...Object.keys(connectors)])].sort((a, b) => b.length - a.length)
+  const split = name => {
+    const server = known.find(s => name.startsWith(`mcp__${s}__`)) ?? name.split('__')[1] ?? 'other'
+    return [server, name.slice(`mcp__${server}__`.length) || name]
   }
+  const add = (name, description) => {
+    const [server, tool] = split(name)
+    if (projectOnly.has(server)) return
+    if (!servers.has(server)) servers.set(server, [])
+    if (tool !== '*' && !servers.get(server).some(t => t.name === name)) servers.get(server).push({ name, tool, description })
+  }
+  for (const [name, entry] of Object.entries(catalog.tools ?? {})) if (entry.mcp) add(name, entry.description ?? '')
+  for (const rule of deny) if (/^mcp__[^(]+$/.test(rule)) add(rule.split('__').length > 2 ? rule : `${rule}__*`, '')
   const groups = [...servers].map(([server, serverTools]) => {
-    const isServerOn = !deny.includes(`mcp__${server}`)
-    const title = serverTitle(server)
+    const isServerOn = !serverRules(server).some(rule => deny.includes(rule))
+    const title = serverTitle(server, connectors)
     const items = serverTools
-      .map(({ name, tool, description }) => ({ title: tool, description, value: !deny.includes(name), isDisabled: !isServerOn, act: { type: 'deny', rule: name } }))
+      .map(({ name, tool, description }) => ({ title: tool, description, summary: summaries[`tools/${name}`]?.text, value: !deny.includes(name), isDisabled: !isServerOn, act: { type: 'deny', rule: name } }))
       .sort((a, b) => a.title.localeCompare(b.title))
     const count = serverTools.length ? `${serverTools.length} ${serverTools.length === 1 ? 'tool' : 'tools'}` : 'No session has seen its tools yet'
-    return { title, items, toggle: { title, description: count, value: isServerOn, act: { type: 'deny', rule: `mcp__${server}` } } }
+    const note = server.startsWith('ccd_') ? ' · Part of the desktop app; turning it off can break the app.' : ''
+    const [rule, ...also] = serverRules(server)
+    return { title, items, toggle: { title, description: count + note, value: isServerOn, act: { type: 'deny', rule, also } } }
   })
   return groups.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
 }
@@ -289,42 +462,77 @@ async function general(settings) {
   )
   const get = keys => keys.reduce((value, key) => value?.[key], settings)
   let order = 0
-  const row = (group, title, description, keys, control, extra = {}) => ({ group, title, description, order: order++, value: get(keys), control, ...extra, act: { type: 'setting', key: keys, ...extra.act } })
+  /**
+   * One settings row. `def` is Claude Code's default: an unset key shows it, and choosing it removes the key.
+   * `min` and `max` bound a whole number.
+   */
+  const row = (group, title, description, keys, control, { def, min, max, ...extra } = {}) => ({
+    group,
+    title,
+    description,
+    order: order++,
+    value: get(keys) ?? def,
+    control,
+    ...extra,
+    act: { type: 'setting', key: keys, def, ...(min !== undefined && { number: true, min, max }) },
+  })
   const options = (...values) => values.map(value => (Array.isArray(value) ? { value: value[0], label: value[1] } : { value, label: value }))
+  const EFFORT = options(['', 'Default'], 'low', 'medium', 'high', 'xhigh')
+  // Opus 5.5 and later models read effort from `modelSettings`, which /effort writes, so each model there gets a row.
+  const perModel = Object.keys(settings.modelSettings ?? {}).flatMap(id => [
+    row('Model', `Effort for ${id}`, `How hard ${id} thinks before it answers.`, ['modelSettings', id, 'effortLevel'], 'segmented', { options: EFFORT }),
+  ])
   return grouped([
-    row('Model', 'Model', 'The model that new sessions use.', ['model'], 'select', { options: options(['', 'Default'], 'opus', 'sonnet', 'haiku', 'fable', 'opusplan') }),
-    row('Model', 'Effort', 'How hard Claude thinks before it answers.', ['effortLevel'], 'segmented', { options: options(['', 'Default'], 'low', 'medium', 'high', 'xhigh', 'max') }),
-    row('Model', 'Thinking', 'Turn on extended thinking by default.', ['alwaysThinkingEnabled'], 'switch'),
-    row('Model', 'Fast mode', 'Use faster output where the model offers it.', ['fastMode'], 'switch'),
-    row('Model', 'Output style', 'How Claude structures its answers.', ['outputStyle'], 'select', { options: options(['', 'Default'], 'Explanatory', 'Learning', ...styles) }),
+    row('Model', 'Model', 'The model that new sessions use.', ['model'], 'select', {
+      options: options(['', 'Default'], 'best', 'opus', 'opus[1m]', 'sonnet', 'sonnet[1m]', 'haiku', 'fable', 'opusplan'),
+    }),
+    ...perModel,
+    row('Model', 'Effort (older models)', 'How hard Claude thinks before it answers. Opus 5.5 and later models use the rows for each model.', ['effortLevel'], 'segmented', { options: EFFORT }),
+    row('Model', 'Thinking', 'Off turns extended thinking off for every session.', ['alwaysThinkingEnabled'], 'switch', { def: true }),
+    row('Model', 'Fast mode', 'Use faster output where the model offers it.', ['fastMode'], 'switch', { def: false }),
+    row('Model', 'Output style', 'How Claude structures its answers.', ['outputStyle'], 'select', {
+      options: options(['', 'Default'], 'Proactive', 'Concise', 'Explanatory', 'Learning', ...styles),
+    }),
     row('Model', 'Language', 'The language that Claude answers in.', ['language'], 'text'),
     row('Permissions', 'Default permission mode', 'How Claude asks before it acts.', ['permissions', 'defaultMode'], 'select', {
       options: options(['', 'Default'], 'acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions'),
     }),
-    row('Behavior', 'Respect .gitignore', 'Leave ignored files out of file pickers and searches.', ['respectGitignore'], 'switch'),
-    row('Behavior', 'Git instructions', 'Add the built-in commit and pull request instructions to the system prompt.', ['includeGitInstructions'], 'switch'),
-    row('Behavior', 'Prompt suggestions', 'Suggest a next prompt after Claude replies.', ['promptSuggestionEnabled'], 'switch'),
-    row('Behavior', 'Spinner tips', 'Show tips beside the spinner while Claude works.', ['spinnerTipsEnabled'], 'switch'),
-    row('Behavior', 'Auto-compact window', 'Tokens of context before Claude compacts the conversation.', ['autoCompactWindow'], 'text', { act: { number: true } }),
-    row('Behavior', 'Keep transcripts for', 'Days before old sessions are deleted.', ['cleanupPeriodDays'], 'text', { act: { number: true } }),
-    row('Sync', 'Sync skills from Claude.ai', 'Load the skills that your Claude.ai account has.', ['syncClaudeAiSkills'], 'switch'),
-    row('Sync', 'Sync plugins from Claude.ai', 'Load the plugins that your Claude.ai account has.', ['syncClaudeAiPlugins'], 'switch'),
-  ], ['Model', 'Permissions', 'Behavior', 'Sync'])
+    row('Interface', 'Theme', 'The colors of the terminal interface.', ['theme'], 'select', {
+      options: options(['', 'Default'], 'auto', 'dark', 'light', 'dark-daltonized', 'light-daltonized', 'dark-ansi', 'light-ansi'),
+    }),
+    row('Interface', 'Editor mode', 'How the prompt input handles keys.', ['editorMode'], 'segmented', { options: options(['', 'Default'], 'normal', 'vim') }),
+    row('Interface', 'View mode', 'How much of Claude’s work the transcript shows.', ['viewMode'], 'segmented', { options: options(['', 'Default'], 'default', 'verbose', 'focus') }),
+    row('Interface', 'Terminal UI', 'Draw in the normal terminal or in a full-screen view.', ['tui'], 'segmented', { options: options(['', 'Default'], 'default', 'fullscreen') }),
+    row('Interface', 'Thinking summaries', 'Show a summary of Claude’s thinking in the transcript.', ['showThinkingSummaries'], 'switch', { def: false }),
+    row('Interface', 'Spinner tips', 'Show tips beside the spinner while Claude works.', ['spinnerTipsEnabled'], 'switch', { def: true }),
+    row('Behavior', 'Respect .gitignore', 'Leave ignored files out of file pickers and searches.', ['respectGitignore'], 'switch', { def: true }),
+    row('Behavior', 'Git instructions', 'Add the built-in commit and pull request instructions to the system prompt.', ['includeGitInstructions'], 'switch', { def: true }),
+    row('Behavior', 'Prompt suggestions', 'Suggest a next prompt after Claude replies.', ['promptSuggestionEnabled'], 'switch', { def: true }),
+    row('Behavior', 'Auto-compact', 'Compact the conversation when the context window gets full.', ['autoCompactEnabled'], 'switch', { def: true }),
+    row('Behavior', 'Auto memory', 'Let Claude save notes that later sessions read.', ['autoMemoryEnabled'], 'switch', { def: true }),
+    row('Behavior', 'Auto-compact window', 'Tokens of context before Claude compacts the conversation: 100000 to 1000000.', ['autoCompactWindow'], 'text', { min: 100000, max: 1000000 }),
+    row('Behavior', 'Keep transcripts for', 'Days before old sessions are deleted: 1 or more.', ['cleanupPeriodDays'], 'text', { min: 1 }),
+    row('Updates', 'Update channel', 'Which releases Claude Code updates to.', ['autoUpdatesChannel'], 'segmented', { options: options(['', 'Default'], 'latest', 'stable') }),
+    row('Sync', 'Sync skills from Claude.ai', 'Load the skills that your Claude.ai account has.', ['syncClaudeAiSkills'], 'switch', { def: true }),
+    row('Sync', 'Sync plugins from Claude.ai', 'Load the plugins that your Claude.ai account has.', ['syncClaudeAiPlugins'], 'switch', { def: true }),
+  ], ['Model', 'Permissions', 'Interface', 'Behavior', 'Updates', 'Sync'])
 }
 
 /** Parts of a variable name, between underscores, that mark its value as secret. The window hides it until you click the eye button. */
-const SECRET_PARTS = new Set(['KEY', 'APIKEY', 'TOKEN', 'SECRET', 'PASSWORD', 'PASSWD', 'PASS', 'PWD', 'AUTH', 'CREDENTIAL', 'CREDENTIALS', 'PAT', 'PRIVATE', 'COOKIE'])
-const isSecret = name => name.toUpperCase().split('_').some(part => SECRET_PARTS.has(part)) || /(KEY|TOKEN|SECRET|PASSWORD)$/i.test(name)
+const SECRET_PARTS = new Set([
+  'KEY', 'KEYS', 'APIKEY', 'TOKEN', 'SECRET', 'PASSWORD', 'PASSWD', 'PASS', 'PASSPHRASE', 'PWD', 'AUTH', 'CREDENTIAL', 'CREDENTIALS',
+  'PAT', 'PRIVATE', 'COOKIE', 'HEADERS', 'DSN', 'WEBHOOK', 'BEARER', 'SESSION',
+])
+/** Values that hold a credential whatever the name: known key prefixes, a URL with a password, or an auth header. */
+const SECRET_VALUE = /^(sk-|ghp_|gho_|github_pat_|xox[abp]-|AKIA)|:\/\/[^/\s:@]+:[^/\s@]+@|\bBearer\s|Authorization[:=]/i
+const isSecret = (name, value = '') =>
+  name.toUpperCase().split('_').some(part => SECRET_PARTS.has(part)) || /(API_?KEY|TOKEN|SECRET|PASSWORD)$/i.test(name) || SECRET_VALUE.test(value)
 
 function env(settings) {
-  const items = Object.entries(settings.env ?? {}).map(([name, value]) => ({
-    title: name,
-    group: 'Variables',
-    value: typeof value === 'string' ? value : JSON.stringify(value),
-    control: 'env',
-    isSecret: isSecret(name),
-    act: { type: 'env', name },
-  }))
+  const items = Object.entries(settings.env ?? {}).map(([name, raw]) => {
+    const value = typeof raw === 'string' ? raw : JSON.stringify(raw)
+    return { title: name, group: 'Variables', value, control: 'env', isSecret: isSecret(name, value), act: { type: 'env', name } }
+  })
   return grouped(items)
 }
 
@@ -342,25 +550,27 @@ async function contexts() {
 }
 
 async function model() {
-  const [settings, catalog, edits, disabled] = await Promise.all([
+  const [settings, catalog, edits, disabled, summaries, connectors] = await Promise.all([
     readJson(at('settings.json'), {}),
     readJson(at(DIRS.data, FILES.catalog), {}),
     readJson(at(DIRS.data, FILES.edits), {}),
     readDisabled(),
+    readJson(at(DIRS.data, FILES.summaries), {}),
+    readJson(at(DIRS.data, FILES.connectors), {}),
   ])
   const section = async (id, title, folder, note, groups, empty) => ({ id, title, folder, note, empty, groups: await groups })
   return Promise.all([
     section('home', 'Home', '', 'What takes up the context window of your recent sessions. Counted after each turn, the same way as /context.', []),
-    section('skills', 'Skills', DIRS.skills, 'Turned-off skills are listed in settings-manager/disabled.json. Changes reach Claude in new sessions.', skills(catalog, disabled)),
-    section('prompts', 'System prompt', DIRS.prompts, 'Each section is a file in prompts. Edit a section to change what Claude reads.', prompts(catalog, edits, disabled)),
+    section('skills', 'Skills', DIRS.skills, 'Turned-off skills are listed in settings-manager/disabled.json. Changes reach Claude in new sessions.', skills(catalog, disabled, settings)),
+    section('prompts', 'System prompt', DIRS.prompts, 'Each section is a file in prompts. Edit a section to change what Claude reads.', prompts(catalog, edits, disabled, summaries)),
     section('agents', 'Subagents', DIRS.agents, 'Subagent types that Claude can start.', agents(catalog, disabled)),
     section('commands', 'Commands', DIRS.commands, 'Turned-off commands are hidden and refused.', commands(catalog, disabled)),
     section('tools', 'Tools', '', 'Turning a tool off adds it to permissions.deny in settings.json.', tools(catalog, settings)),
-    section('mcp', 'MCP', '', 'User-level and desktop app servers. Turning a server or tool off adds it to permissions.deny in settings.json.', mcp(catalog, settings), 'No session has seen an MCP server yet.'),
+    section('mcp', 'MCP', '', 'User-level and desktop app servers. Turning a server or tool off adds it to permissions.deny in settings.json.', mcp(catalog, settings, summaries, connectors), 'No session has seen an MCP server yet.'),
     section('plugins', 'Plugins', 'plugins', 'Plugins and mods load in new sessions, or after /reload-plugins.', plugins(settings)),
-    section('hooks', 'Hooks', '', 'Turned-off settings hooks move from settings.json to settings-manager/disabled.json.', hooks(settings, disabled)),
+    section('hooks', 'Hooks', '', 'Hooks from your user settings.json. A turned-off hook moves to settings-manager/disabled.json. Project, managed and plugin hooks are not listed.', hooks(settings, disabled)),
     section('general', 'General', '', 'Settings from settings.json.', general(settings)),
-    section('env', 'Environment', '', 'Variables from env in settings.json. Claude Code sets them in new sessions.', env(settings), 'No variables are set.'),
+    section('env', 'Environment', '', 'Variables from env in settings.json. Running sessions pick up new and changed values; a removed variable stays until Claude Code restarts.', env(settings), 'No variables are set.'),
   ])
 }
 
@@ -392,7 +602,7 @@ async function remember(change, label) {
   }
   if (!files.length && !change.moves.length) return
   history = [...history, { label, files, moves: change.moves }].slice(-HISTORY_SIZE)
-  await writeJson(historyFile, history)
+  await writeJson(historyFile, history, 0o600)
 }
 
 /** Undoes the last change. Throws, and drops the change, if a file changed after it. */
@@ -405,7 +615,7 @@ async function undo() {
   if (changed.length) {
     // The change can never be undone now, so it leaves the history and Undo moves on to the change before it.
     history = history.slice(0, -1)
-    await writeJson(historyFile, history)
+    await writeJson(historyFile, history, 0o600)
     throw new Error(`Settings Manager can't undo "${last.label}", because this changed after it:\n${changed.join('\n')}\nIt is removed from the undo list.`)
   }
   for (const { from, to } of [...last.moves].reverse()) await move(to, from)
@@ -417,7 +627,7 @@ async function undo() {
     }
   }
   history = history.slice(0, -1)
-  await writeJson(historyFile, history)
+  await writeJson(historyFile, history, 0o600)
 }
 
 const move = async (from, to) => {
@@ -426,11 +636,32 @@ const move = async (from, to) => {
   await fs.rename(from, to)
 }
 
+/**
+ * Writes a whole file at once: to a temporary file, then renamed over it, so Claude Code, which watches
+ * settings.json, never reads half a file. Windows can refuse the rename while another program has the file open,
+ * so it is tried a few times.
+ */
+async function writeWhole(path, text) {
+  await fs.mkdir(path.replace(/\/[^/]*$/, ''), { recursive: true })
+  const temp = `${path}.${process.pid}.tmp`
+  await fs.writeFile(temp, text)
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fs.rename(temp, path)
+    } catch (error) {
+      if (attempt >= 5 || !['EPERM', 'EBUSY', 'EACCES'].includes(error.code)) {
+        await fs.rm(temp, { force: true })
+        throw error
+      }
+      await sleep(50 * (attempt + 1))
+    }
+  }
+}
+
 /** Writes a file and saves its old text in `change` first. */
 async function write(change, path, text) {
   await change.track(path)
-  await fs.mkdir(path.replace(/\/[^/]*$/, ''), { recursive: true })
-  await fs.writeFile(path, text)
+  await writeWhole(path, text)
 }
 
 /**
@@ -448,9 +679,25 @@ async function markEdited(change, key, isEdited) {
 const disabledFile = at(DIRS.data, FILES.disabled)
 const readDisabled = async () => parseDisabled(await readText(disabledFile))
 
+/**
+ * Reads `disabled.json` to change it. A file with a JSON error is refused, not read as empty: it holds the only
+ * copy of each turned-off settings hook, which writing it back empty would lose.
+ */
+async function readDisabledToEdit() {
+  const text = await readText(disabledFile)
+  if (text?.trim()) {
+    try {
+      JSON.parse(text.replace(/^﻿/, ''))
+    } catch (error) {
+      throw new Error(`disabled.json has a JSON error, so Settings Manager did not change it. Fix the file first.\n${error.message}`)
+    }
+  }
+  return parseDisabled(text?.replace(/^﻿/, ''))
+}
+
 /** Reads `disabled.json`, applies `edit` and writes it back. */
 async function editDisabled(change, edit) {
-  const disabled = await readDisabled()
+  const disabled = await readDisabledToEdit()
   edit(disabled)
   for (const kind of DISABLED_KINDS) disabled[kind].sort((a, b) => a.localeCompare(b))
   await write(change, disabledFile, JSON.stringify(disabled, null, 2) + '\n')
@@ -474,7 +721,7 @@ async function migrate() {
   if (!fakeSkills.length && !legacy.some(dir => existsSync(at(dir)))) return
 
   const catalog = await readJson(at(DIRS.data, FILES.catalog), {})
-  const disabled = await readDisabled()
+  const disabled = await readDisabledToEdit()
   const add = (kind, name) => void (disabled[kind].includes(name) || disabled[kind].push(name))
   /** Puts a file or folder of yours back, or leaves it where it is when the name is taken. */
   const putBack = async (from, to) => {
@@ -518,16 +765,49 @@ async function migrate() {
       }
     }
   }
+  // Old hook files are deleted only after disabled.json holds their hooks.
+  const hookFiles = []
   for (const { name, isDir } of await entries(join(DIRS.hooks, DISABLED))) {
     const saved = !isDir && name.endsWith('.json') && (await readJson(at(DIRS.hooks, DISABLED, name), undefined))
-    if (!saved?.group || typeof saved.group !== 'object') continue
-    disabled.hooks[hash([saved.event, saved.group])] = { event: saved.event, group: saved.group }
-    await remove(join(DIRS.hooks, DISABLED, name))
+    if (!saved?.group || typeof saved.group !== 'object' || typeof saved.event !== 'string') continue
+    disabled.hooks[freeHookKey(disabled.hooks, hash([saved.event, saved.group]))] = { event: saved.event, group: saved.group }
+    hookFiles.push(join(DIRS.hooks, DISABLED, name))
   }
   for (const kind of DISABLED_KINDS) disabled[kind].sort((a, b) => a.localeCompare(b))
   await writeJson(disabledFile, disabled)
+  for (const path of hookFiles) await remove(path)
   // A folder that is empty now goes; one that still holds a file of yours stays.
   for (const dir of legacy) await fs.rmdir(at(dir)).catch(() => {})
+}
+
+/**
+ * Deletes what older versions saved of reminders that can hold private data, such as your email, folder paths or
+ * file contents: their files, their edit records, their stored originals and summaries, and their text in the
+ * catalog. Only SAVED_REMINDERS keep their text. Runs when the server starts.
+ */
+async function forgetPrivateReminders() {
+  const isPrivate = base => !SAVED_REMINDERS.has(base)
+  for (const name of await list(DIRS.reminders, false)) if (name.endsWith('.md') && isPrivate(name.slice(0, -3))) await fs.rm(at(DIRS.reminders, name), { force: true })
+  const prefix = `${DIRS.reminders}/`
+  const prune = async (file, keep) => {
+    const path = at(DIRS.data, file)
+    const value = await readJson(path, undefined)
+    if (!isObject(value)) return
+    const kept = Object.fromEntries(Object.entries(value).filter(([key]) => keep(key)))
+    if (Object.keys(kept).length !== Object.keys(value).length) await writeWhole(path, JSON.stringify(kept, null, 2) + '\n')
+  }
+  await prune(FILES.edits, key => !key.startsWith(prefix) || !isPrivate(key.slice(prefix.length)))
+  await prune(FILES.defaults, key => !key.startsWith(prefix) || !isPrivate(key.slice(prefix.length)))
+  await prune(FILES.summaries, key => !key.startsWith('reminders/') || !isPrivate(key.slice('reminders/'.length)))
+  const catalogPath = at(DIRS.data, FILES.catalog)
+  const catalog = await readJson(catalogPath, undefined)
+  if (isObject(catalog?.reminders)) {
+    let isChanged = false
+    for (const [type, entry] of Object.entries(catalog.reminders)) {
+      if (isPrivate(type) && isObject(entry) && Object.keys(entry).length) (catalog.reminders[type] = {}), (isChanged = true)
+    }
+    if (isChanged) await writeWhole(catalogPath, JSON.stringify(catalog, null, 2))
+  }
 }
 
 /** Reads settings.json, applies `edit` and writes it back. A file with a JSON error is left as it is. */
@@ -537,7 +817,7 @@ async function editSettings(change, edit) {
   let settings = {}
   if (text !== undefined && text.trim()) {
     try {
-      settings = JSON.parse(text)
+      settings = JSON.parse(text.replace(/^﻿/, ''))
     } catch (error) {
       throw new Error(`settings.json has a JSON error, so Settings Manager did not change it. Fix the file first.\n${error.message}`)
     }
@@ -548,37 +828,62 @@ async function editSettings(change, edit) {
 }
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
+/** Key names that would reach JavaScript's object prototype, which the window never writes. */
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
 
 /** Each action changes files on disk. `change` collects what it changes, so the change can be undone. */
 const ACTIONS = {
   /** Turns a skill, section, reminder, subagent or command on or off by name in `disabled.json`. */
   async disable({ kind, name }, isOn, change) {
     if (!DISABLED_KINDS.includes(kind) || typeof name !== 'string' || !name) throw new Error('Settings Manager does not know this item. Reload the window.')
+    if (kind === 'commands' && !isOn && PROTECTED_COMMANDS.has(name)) throw new Error(`/${name} always stays on, so you can manage plugins and this mod.`)
     await editDisabled(change, disabled => {
       disabled[kind] = disabled[kind].filter(item => item !== name)
       if (!isOn) disabled[kind].push(name)
     })
   },
-  async setting({ key, invert, number }, value, change) {
-    const next = invert ? !value : number && value !== '' ? Number(value) : value
+  /**
+   * Sets a key of settings.json. An empty value, or Claude Code's default `def`, removes the key, and parent
+   * objects left empty go too. A `number` must be a whole number from `min` to `max`.
+   */
+  async setting({ key, invert, number, min, max, def }, value, change) {
+    if (!Array.isArray(key) || !key.length || key.some(part => typeof part !== 'string' || UNSAFE_KEYS.has(part))) throw new Error('Settings Manager does not know this setting. Reload the window.')
+    let next = invert ? !value : value
+    if (number && typeof next === 'string' && next.trim()) {
+      next = Number(next.trim())
+      if (!Number.isInteger(next) || next < (min ?? -Infinity) || next > (max ?? Infinity)) {
+        throw new Error(`${key.at(-1)} takes a whole number${min !== undefined ? ` from ${min}` : ''}${max !== undefined ? ` to ${max}` : ''}.`)
+      }
+    }
     await editSettings(change, settings => {
-      const parent = key.slice(0, -1).reduce((node, part) => (node[part] ??= {}), settings)
-      if (next === '' || next === null || Number.isNaN(next)) delete parent[key.at(-1)]
+      const parents = [settings]
+      for (const part of key.slice(0, -1)) parents.push((parents.at(-1)[part] ??= {}))
+      const parent = parents.at(-1)
+      if (next === '' || next === null || (typeof next === 'string' && !next.trim()) || (def !== undefined && next === def)) delete parent[key.at(-1)]
       else parent[key.at(-1)] = next
+      for (let i = parents.length - 1; i > 0; i--) if (!Object.keys(parents[i]).length) delete parents[i - 1][key[i - 1]]
     })
   },
-  async deny({ rule }, isOn, change) {
+  /**
+   * Adds `rule` to `permissions.deny`, or removes it. Turning on also removes the other spellings of the same rule:
+   * `also`, and `<rule>(*)`, which the docs make the same as the bare name.
+   */
+  async deny({ rule, also = [] }, isOn, change) {
+    if (typeof rule !== 'string' || !rule || !Array.isArray(also)) throw new Error('Settings Manager does not know this rule. Reload the window.')
+    const drop = new Set([rule, `${rule}(*)`, ...also])
     await editSettings(change, settings => {
-      const deny = ((settings.permissions ??= {}).deny ??= []).filter(item => item !== rule)
+      const deny = ((settings.permissions ??= {}).deny ??= []).filter(item => !drop.has(item))
       settings.permissions.deny = isOn ? deny : [...deny, rule]
     })
   },
   /** Sets a variable in `env`. A null value deletes it. `isNew` refuses a name that is already there. */
   async env({ name, isNew }, value, change) {
-    if (typeof name !== 'string' || !ENV_NAME.test(name)) throw new Error('A variable name uses only letters, digits and _, and it does not start with a digit.')
+    if (typeof name !== 'string' || !ENV_NAME.test(name) || UNSAFE_KEYS.has(name)) throw new Error('A variable name uses only letters, digits and _, and it does not start with a digit.')
     await editSettings(change, settings => {
       const vars = (settings.env ??= {})
-      if (isNew && name in vars) throw new Error(`${name} is already set.`)
+      // Windows reads variable names without regard to case, so FOO and foo are the same variable there.
+      const taken = Object.keys(vars).find(other => (isWindows ? other.toUpperCase() === name.toUpperCase() : other === name))
+      if (isNew && taken) throw new Error(`${taken} is already set.`)
       if (value === null) delete vars[name]
       else vars[name] = String(value)
       if (!Object.keys(vars).length) delete settings.env
@@ -586,25 +891,55 @@ const ACTIONS = {
   },
   /** Moves a settings hook between settings.json and the `hooks` of `disabled.json`, which keeps it to turn back on. */
   async hook({ event, id }, isOn, change) {
+    if (typeof id !== 'string' || UNSAFE_KEYS.has(id)) throw new Error('Settings Manager does not know this hook. Reload the window.')
     if (isOn) {
-      const group = (await readDisabled()).hooks[id]?.group
-      if (!group || typeof group !== 'object') throw new Error('This hook is no longer saved in disabled.json. Reload the window.')
-      await editSettings(change, settings => ((settings.hooks ??= {})[event] ??= []).push(group))
+      // A turned-on hook goes back where it was in its event, under the event it was saved with.
+      const saved = (await readDisabledToEdit()).hooks[id]
+      if (!isObject(saved?.group) || typeof saved.event !== 'string') throw new Error('This hook is no longer saved in disabled.json. Reload the window.')
+      await editSettings(change, settings => {
+        if (!isObject(settings.hooks)) settings.hooks = {}
+        const groups = Array.isArray(settings.hooks[saved.event]) ? settings.hooks[saved.event] : (settings.hooks[saved.event] = [])
+        groups.splice(Math.min(Number.isInteger(saved.index) ? saved.index : groups.length, groups.length), 0, saved.group)
+      })
       return editDisabled(change, disabled => void delete disabled.hooks[id])
     }
-    let group
-    await editSettings(change, settings => {
-      const groups = settings.hooks?.[event] ?? []
-      group = groups.find(item => hash([event, item]) === id)
-      if (!group) throw new Error('This hook is no longer in settings.json. Reload the window.')
-      settings.hooks[event] = groups.filter(item => item !== group)
-      if (!settings.hooks[event].length) delete settings.hooks[event]
-    })
-    await editDisabled(change, disabled => void (disabled.hooks[id] = { event, group }))
+    if (typeof event !== 'string' || UNSAFE_KEYS.has(event)) throw new Error('Settings Manager does not know this hook. Reload the window.')
+    // The hook is saved in disabled.json first, and leaves settings.json only after that worked.
+    const settingsText = (await readText(at('settings.json')))?.replace(/^﻿/, '')
+    const groups = (() => {
+      try {
+        return JSON.parse(settingsText ?? '{}')?.hooks?.[event]
+      } catch {
+        return undefined
+      }
+    })()
+    const index = hookIds(event, groups).indexOf(id)
+    if (index < 0) throw new Error('This hook is no longer in settings.json. Reload the window.')
+    let key
+    await editDisabled(change, disabled => void (disabled.hooks[(key = freeHookKey(disabled.hooks, id))] = { event, index, group: groups[index] }))
+    try {
+      await editSettings(change, settings => {
+        const now = settings.hooks?.[event]
+        if (hookIds(event, now)[index] !== id) throw new Error('settings.json changed. Reload the window.')
+        now.splice(index, 1)
+        if (!now.length) delete settings.hooks[event]
+        if (!Object.keys(settings.hooks).length) delete settings.hooks
+      })
+    } catch (error) {
+      await editDisabled(change, disabled => void delete disabled.hooks[key])
+      throw error
+    }
   },
+  /**
+   * Saves a file's text. For a prompt file (`key`), the edit record comes first, so a running session that reads
+   * the file never takes the new text for Claude Code's own; text that equals the original is no edit.
+   */
   async edit({ path, text, key }, _value, change) {
+    if (typeof key === 'string') {
+      const defaults = await readJson(at(DIRS.data, FILES.defaults), {})
+      await markEdited(change, key, defaults[key] !== text)
+    }
     await write(change, inside(path), text)
-    if (typeof key === 'string') await markEdited(change, key, true)
   },
   async reset({ path, key }, _value, change) {
     const target = inside(path)
@@ -737,21 +1072,30 @@ const isAsset = path => /^\/(assets\/)?[\w.-]+\.(js|css|svg|png|woff2)$/.test(pa
 async function serve() {
   // A failed move is kept in a file to read, and the server starts anyway.
   await migrate().catch(error => writeJson(at(DIRS.data, 'migration-error.json'), { message: String(error?.stack ?? error) }))
+  await forgetPrivateReminders().catch(error => writeJson(at(DIRS.data, 'migration-error.json'), { message: String(error?.stack ?? error) }))
   const token = randomBytes(16).toString('hex')
   const page = await fs.readFile(new URL('index.html', DIST), 'utf8')
   let lastSeen = Date.now()
   let tray
-  const send = (res, status, body, type = 'text/plain; charset=utf-8') => res.writeHead(status, { 'content-type': type }).end(body)
+  // The state holds settings and environment values, so no response is cached or sent on as a referrer.
+  const send = (res, status, body, type = 'text/plain; charset=utf-8') =>
+    res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'x-content-type-options': 'nosniff' }).end(body)
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost')
+    // Only pages of this server may call it: another site that points its name at 127.0.0.1 sends its own Host.
+    const port = server.address().port
+    const host = String(req.headers.host ?? '').toLowerCase()
+    if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) return send(res, 403, 'Forbidden')
+    if (req.headers.origin && req.headers.origin !== `http://${host}`) return send(res, 403, 'Forbidden')
     if (isAsset(url.pathname)) {
       const body = await fs.readFile(new URL(`.${url.pathname}`, DIST)).catch(() => undefined)
       return body ? send(res, 200, body, TYPES[url.pathname.split('.').pop()]) : send(res, 404, 'Not found')
     }
+    // The page holds no data, so it loads without the token; the page keeps the token after it leaves the address.
+    if (url.pathname === '/') return send(res, 200, page, 'text/html; charset=utf-8')
     if (url.searchParams.get('t') !== token && req.headers['x-token'] !== token) return send(res, 403, 'Forbidden')
     lastSeen = Date.now()
     try {
-      if (url.pathname === '/') return send(res, 200, page, 'text/html; charset=utf-8')
       if (url.pathname === '/api/ping') return send(res, 200, 'ok')
       if (url.pathname === '/api/open') {
         if (tray) tray.stdin.write('open\n')
@@ -765,7 +1109,7 @@ async function serve() {
         await run(act, value, label)
       }
       if (req.method === 'POST' && url.pathname === '/api/undo') await undo()
-      if (url.pathname.startsWith('/api/')) return send(res, 200, JSON.stringify({ root, sections: await model(), contexts: await contexts(), undo: history.at(-1)?.label }), 'application/json')
+      if (url.pathname.startsWith('/api/')) return send(res, 200, JSON.stringify({ root, sections: await model(), contexts: await contexts(), connectors: await readJson(at(DIRS.data, FILES.connectors), {}), undo: history.at(-1)?.label }), 'application/json')
       send(res, 404, 'Not found')
     } catch (error) {
       send(res, 500, String(error?.message ?? error))

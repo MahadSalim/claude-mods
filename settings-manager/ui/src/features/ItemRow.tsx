@@ -38,7 +38,11 @@ export function ItemRow({ item, onAct, onOpen }: Props) {
           {item.title}
           <Badges item={item} />
         </div>
-        {item.description && <div className="mt-0.5 truncate text-[13.5px] text-muted-foreground">{item.description}</div>}
+        {(item.summary || item.description) && (
+          <div className="mt-0.5 truncate text-[13.5px] text-muted-foreground" title={item.summary ? item.description : undefined}>
+            {item.summary || item.description}
+          </div>
+        )}
       </div>
       <div className="flex flex-none items-center gap-2" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
         <ItemControl item={item} onSet={value => onAct(item.act, value, changeLabel(item, value))} />

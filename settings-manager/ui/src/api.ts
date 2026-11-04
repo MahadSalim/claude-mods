@@ -1,6 +1,21 @@
 import type { Act, State, Value } from './types'
 
-const token = new URLSearchParams(location.search).get('t') ?? ''
+/**
+ * The server's token. It arrives in the page's address once; the page keeps it in session storage and takes it
+ * out of the address, so it stays out of the browser's history.
+ */
+const token = (() => {
+  let value = new URLSearchParams(location.search).get('t') ?? ''
+  try {
+    value ||= sessionStorage.getItem('t') ?? ''
+    sessionStorage.setItem('t', value)
+  } catch {
+    // Storage can be off; the token then stays in the address.
+    return value
+  }
+  history.replaceState(null, '', location.pathname)
+  return value
+})()
 const headers = { 'x-token': token, 'content-type': 'application/json' }
 
 /** Calls the window server and returns its state. */

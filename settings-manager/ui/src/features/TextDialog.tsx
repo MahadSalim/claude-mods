@@ -42,7 +42,8 @@ export function TextDialog({ item: openItem, onAct, onClose }: Props) {
     onClose()
   }
   const save = () => {
-    if (item?.edit) onAct({ type: 'edit', path: item.edit.path, text: draft, ...(item.edit.key && { key: item.edit.key }) }, null, `Edit ${item.title}`)
+    // Saving text that did not change records no edit, so the file keeps following Claude Code.
+    if (item?.edit && draft !== item.edit.text) onAct({ type: 'edit', path: item.edit.path, text: draft, ...(item.edit.key && { key: item.edit.key }) }, null, `Edit ${item.title}`)
     close(true)
   }
   const confirm = () => {

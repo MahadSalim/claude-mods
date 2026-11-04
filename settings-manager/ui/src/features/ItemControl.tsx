@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import type { Item, Value } from '@/types'
 
@@ -34,16 +35,29 @@ function TextField({ item, onSet, isHidden, className = 'w-56', placeholder = 'D
 function EnvControl({ item, onSet }: Props) {
   const [isShown, setIsShown] = useState(false)
   const label = isShown ? `Hide ${item.title}` : `Show ${item.title}`
+  // A text field drops line breaks, so a value with several lines, such as a list of headers, gets a text area.
+  // Hidden, it shows dots in a field that cannot be changed, so a blur never saves the value without its breaks.
+  const text = String(item.value ?? '')
+  const isMultiline = text.includes('\n')
+  const isHidden = item.isSecret && !isShown
+  const fieldClass = cn('w-72 font-mono text-[13px] md:text-[13px]', item.isSecret && 'pr-9')
   return (
     <>
       <div className="group relative">
-        <TextField
-          item={item}
-          onSet={onSet}
-          isHidden={item.isSecret && !isShown}
-          placeholder="Empty"
-          className={cn('w-72 font-mono text-[13px] md:text-[13px]', item.isSecret && 'pr-9')}
-        />
+        {!isMultiline ? (
+          <TextField item={item} onSet={onSet} isHidden={isHidden} placeholder="Empty" className={fieldClass} />
+        ) : isHidden ? (
+          <Input readOnly type="password" value="multiline value" aria-label={item.title} className={fieldClass} />
+        ) : (
+          <Textarea
+            key={text}
+            rows={Math.min(6, text.split('\n').length)}
+            defaultValue={text}
+            aria-label={item.title}
+            className={cn(fieldClass, 'min-h-0 resize-y')}
+            onBlur={e => e.target.value !== text && onSet(e.target.value)}
+          />
+        )}
         {item.isSecret && (
           <button
             type="button"
@@ -75,7 +89,7 @@ export function ItemControl({ item, onSet }: Props) {
 
   if (control === 'segmented')
     return (
-      <ToggleGroup type="single" variant="outline" value={String(item.value ?? '') || EMPTY} onValueChange={value => value && set(value === EMPTY ? '' : value)}>
+      <ToggleGroup type="single" variant="outline" disabled={item.isDisabled} value={String(item.value ?? '') || EMPTY} onValueChange={value => value && set(value === EMPTY ? '' : value)}>
         {item.options?.map(option => (
           <ToggleGroupItem key={option.value} value={option.value || EMPTY} className="px-3">
             {option.label}
@@ -88,7 +102,7 @@ export function ItemControl({ item, onSet }: Props) {
     const current = String(item.value ?? '')
     const options = item.options?.some(option => option.value === current) ? item.options : [...(item.options ?? []), { value: current, label: current }]
     return (
-      <Select value={current || EMPTY} onValueChange={value => set(value === EMPTY ? '' : value)}>
+      <Select disabled={item.isDisabled} value={current || EMPTY} onValueChange={value => set(value === EMPTY ? '' : value)}>
         <SelectTrigger className="w-56" aria-label={item.title}>
           <SelectValue />
         </SelectTrigger>

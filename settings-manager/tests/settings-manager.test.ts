@@ -44,13 +44,13 @@ function disk(on: On, files: Record<string, string>) {
 }
 
 /** Stubs what `session.start` calls, with the config folder at ROOT. */
-function session(on: On, files: Record<string, string> = {}) {
+function session(on: On, files: Record<string, string> = {}, tools = [{ name: 'Bash', description: 'Run a command', mcp: false }]) {
   const clock = mock.clock(on)
   mock.env(on, { CLAUDE_CONFIG_DIR: ROOT })
   on('session.start', () => ({ cwd: '/work' }))
   on('command.register', () => ({ value: undefined }))
   on('command.list', () => ({ value: [{ name: 'compact', description: 'Compact', source: 'builtin' as const }] }))
-  on('tool.list', () => ({ value: [{ name: 'Bash', description: 'Run a command', mcp: false }] }))
+  on('tool.list', () => ({ value: tools }))
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
   return { files: disk(on, files), clock }
 }
@@ -136,11 +136,14 @@ test('originals follow Claude while edits win, and a reset file follows Claude a
   await clock.advance(2000)
   expect(originals()).toMatchObject({ tools: 'core tools v2', 'prompts/reminders/auto_mode': 'Auto mode is on.' })
 
-  // A reset in the window writes the original back and removes the edit record.
+  // A reset in the window writes the original back and removes the edit record. A running session keeps its
+  // system prompt, so the prompt cache holds; the next session follows Claude again.
   files.set(`${ROOT}/prompts/tools.md`, originals().tools)
   files.set(EDITS, JSON.stringify({ 'prompts/reminders/auto_mode': {} }))
   await $.turn.start({ text: '', turnId: 't1' })
   live = 'core tools v3'
+  expect(await compose()).toBe('my own tools text')
+  await start($)
   expect(await compose()).toBe('core tools v3')
   expect(files.get(`${ROOT}/prompts/tools.md`)).toBe('core tools v3')
 })
@@ -181,6 +184,25 @@ test('messages sent mid-turn reach Claude as they are, and are never saved or re
   }
   expect(files.get(`${ROOT}/prompts/reminders/queued_command.md`)).toBe(OLD)
   expect([...files.values()].some(text => text.includes('Push it when you are done.'))).toBe(false)
+})
+
+test('reminders that can hold private data can be turned off, but their text is never saved or replaced', async ($, on) => {
+  const { files, clock } = session(on, {
+    [DISABLED]: JSON.stringify({ reminders: ['environment'] }),
+    [EDITS]: JSON.stringify({ 'prompts/reminders/session_context': {} }),
+    [`${ROOT}/prompts/reminders/session_context.md`]: 'replayed text',
+  })
+  on('prompt.attachment', ($, e) => ({ text: e.text }))
+  await start($)
+
+  const context = 'The user\'s email is someone@example.com.'
+  expect(await $.prompt.attachment({ type: 'session_context', text: context, origin: ENGINE })).toEqual({ text: context })
+  expect(await $.prompt.attachment({ type: 'environment', text: 'Working directory: C:/work', origin: ENGINE })).toEqual({ text: null })
+  expect(await $.prompt.attachment({ type: 'poll_events', text: 'A teammate wrote: hi', origin: ENGINE })).toEqual({ text: 'A teammate wrote: hi' })
+  await clock.advance(2000)
+  expect([...files.values()].some(text => text.includes('someone@example.com') || text.includes('A teammate wrote'))).toBe(false)
+  // The catalog knows the type, so the window can list it, but not its text.
+  expect(JSON.parse(files.get(`${ROOT}/settings-manager/catalog.json`)!).reminders.session_context).toEqual({})
 })
 
 test('file contents can be turned off, but are never saved or replaced', async ($, on) => {
@@ -232,6 +254,35 @@ test('turned-off subagents, reminders and commands are withheld', async ($, on) 
   expect(files.get(`${ROOT}/prompts/reminders/auto_mode.md`)).toBe('Auto mode is on.')
   expect((await $.command.run({ command: 'compact', args: '' })).text).toMatch(/turned off/)
   expect(await $.command.run({ command: 'clear', args: '' })).toEqual({ text: 'ran' })
+})
+
+test('turned-off items are refused by every name and path that reaches them', async ($, on) => {
+  session(on, {
+    [`${ROOT}/skills/grill-folder/SKILL.md`]: '---\nname: grill-me\n---\n',
+    [DISABLED]: JSON.stringify({ skills: ['grill-me'], commands: ['init', 'help', 'github:fix (MCP)'], agents: ['Plan'] }),
+  })
+  const provider = { plugin: 'engine', tier: 'core' as const }
+  on('tool.call', () => ({ result: 'ran' }))
+  on('skill.prompt', ($, e) => ({ text: e.text }))
+  on('agent.spawn', () => ({ model: 'm' }))
+  on('command.run', () => ({ text: 'ran' }))
+  on('prompt.attachment', ($, e) => ({ text: e.text }))
+  await start($)
+
+  // The Skill tool runs commands too, and a skill's folder name invokes it like its name.
+  expect(await $.tool.call({ tool: 'Skill', skill: 'init' })).toMatchObject({ deny: expect.stringMatching(/turned off/) })
+  expect(await $.tool.call({ tool: 'Skill', skill: 'grill-folder' })).toMatchObject({ deny: expect.stringMatching(/turned off/) })
+  // A skill that a subagent loads up front gets a note in place of its text.
+  const preload = await $.skill.prompt({ skill: 'grill-me', text: 'Grill the user.', frontmatter: {}, source: 'userSettings' })
+  expect(preload.text).toMatch(/turned off/)
+  // A subagent that is started without being offered is refused.
+  const spawn = { tool_use_id: 't', prompt: 'p', description: 'd', subagentType: 'Plan', provider }
+  expect(await $.agent.spawn(spawn)).toMatchObject({ deny: expect.stringMatching(/turned off/) })
+  // An MCP prompt is refused by the name it is typed with, and /help can never be turned off.
+  expect((await $.command.run({ command: 'mcp__github__fix', args: '' })).text).toMatch(/turned off/)
+  expect(await $.command.run({ command: 'help', args: '' })).toEqual({ text: 'ran' })
+  // A listing whose every entry is off is left out whole.
+  expect(await $.prompt.attachment({ type: 'skill_listing', text: 'Skills:\n- grill-me: Grill.\n- init: Init.', origin: ENGINE })).toEqual({ text: null })
 })
 
 test('the context breakdown is saved per session after start and after each turn', async ($, on) => {
@@ -292,6 +343,46 @@ test('the context breakdown is saved per session after start and after each turn
   await clock.advance(3000)
   expect(asked).toHaveLength(2)
   expect(saved().totalTokens).toBe(10600)
+})
+
+test('sections, reminders and MCP tools get one summary each, and the person\'s words never do', async ($, on) => {
+  const SUMMARIES = `${ROOT}/settings-manager/summaries.json`
+  const { files, clock } = session(on, { [SUMMARIES]: JSON.stringify({ 'sections/tools': { hash: 'old', text: 'Lists the tools.' } }) }, [
+    { name: 'mcp__github__get_me', description: 'Get the signed-in GitHub user.', mcp: true },
+  ])
+  on('prompt.compose', () => ({
+    sections: [
+      { id: 'intro', text: 'You are Claude Code.', scope: 'shared' as const },
+      { id: 'tools', text: 'core tools v2', scope: 'shared' as const },
+    ],
+  }))
+  on('prompt.attachment', ($, e) => ({ text: e.text }))
+  const prompts: string[] = []
+  on('model.complete', ($, e) => {
+    prompts.push(String(e.prompt))
+    const ids = [...String(e.prompt).matchAll(/<item id="([^"]+)">/g)].map(m => m[1])
+    return { value: { isAnswered: true as const, text: JSON.stringify(Object.fromEntries(ids.map(id => [id, `About ${id}.`]))), usage: { inputTokens: 1, outputTokens: 1 } } }
+  })
+  await start($)
+  await $.prompt.compose(COMPOSE)
+  await $.prompt.attachment({ type: 'auto_mode', text: 'Auto mode is on.', origin: ENGINE })
+  await $.prompt.attachment({ type: 'queued_command', text: 'my private words', origin: ENGINE })
+  await clock.advance(12000)
+
+  expect(prompts).toHaveLength(1)
+  expect(prompts[0]).not.toContain('my private words')
+  expect(JSON.parse(files.get(SUMMARIES)!)).toMatchObject({
+    'sections/intro': { text: 'About sections/intro.' },
+    // A section that already has a summary keeps it, though its text changed.
+    'sections/tools': { text: 'Lists the tools.' },
+    'reminders/auto_mode': { text: 'About reminders/auto_mode.' },
+    'tools/mcp__github__get_me': { text: 'About tools/mcp__github__get_me.' },
+  })
+
+  // The next turn asks for nothing new.
+  await $.prompt.compose(COMPOSE)
+  await clock.advance(12000)
+  expect(prompts).toHaveLength(1)
 })
 
 test('/settings-manager starts the window with the config folder', async ($, on) => {

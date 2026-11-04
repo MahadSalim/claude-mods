@@ -33,5 +33,5 @@ export function useSections() {
   }, [run])
 
   const reload = useCallback(() => run(api.load()), [run])
-  return { sections: state.sections, contexts: state.contexts ?? [], lastChange: state.undo, act, undo, reload }
+  return { sections: state.sections, contexts: state.contexts ?? [], connectors: state.connectors ?? {}, lastChange: state.undo, act, undo, reload }
 }

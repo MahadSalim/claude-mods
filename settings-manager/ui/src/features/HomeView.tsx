@@ -7,6 +7,7 @@ import type { Context, Section } from '@/types'
 /** Colors for the rows that fill the window, in the order that /context lists them. */
 const PALETTE = ['#5b8def', '#e8853d', '#2bb39b', '#a77bf3', '#e5c14a', '#e86ba0', '#6cc56c', '#4cc3d9', '#d9714c', '#8f9bb3']
 const BUFFER = '#5c5c5c'
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** 297, 22.6k or 1.2M, as /context writes token counts. */
 export function tokens(n: number) {
@@ -26,80 +27,104 @@ function ago(iso: string) {
 }
 
 const folder = (cwd: string) => cwd.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || cwd
-
-type Row = { name: string; tokens: number; color?: string; isMuted?: boolean }
-
-/** One row: a color square, the name, the tokens and the share of the window. A row without `color` has no square. */
-function TokenRow({ row, max, isDeferred }: { row: Row; max: number; isDeferred?: boolean }) {
-  return (
-    <div className="flex items-center gap-3 py-1.5 text-[14px]">
-      <span className="size-3 flex-none rounded-[3px]" style={{ background: row.color ?? 'transparent', border: row.color ? undefined : '1px solid var(--border)' }} />
-      <span className={cn('min-w-0 flex-1 truncate', row.isMuted && 'text-muted-foreground')} title={row.name}>
-        {row.name}
-      </span>
-      <span className="w-20 text-right tabular-nums text-muted-foreground">{tokens(row.tokens)}</span>
-      <span className="w-16 text-right tabular-nums text-muted-foreground">{isDeferred ? '—' : percent(row.tokens, max)}</span>
-    </div>
-  )
-}
-
-/** A list that opens when you click its title, such as the MCP tools. */
-function Details({ title, count, total, children }: { title: string; count: number; total: number; children: React.ReactNode }) {
-  const [isOpen, setOpen] = useState(false)
-  if (!count) return null
-  return (
-    <div className="border-t">
-      <button onClick={() => setOpen(!isOpen)} aria-expanded={isOpen} className="flex w-full items-center gap-2 py-2.5 text-left text-[14px] hover:text-foreground">
-        <ChevronRight className={cn('size-4 flex-none text-muted-foreground transition-transform', isOpen && 'rotate-90')} />
-        <span className="flex-1">{title}</span>
-        <span className="tabular-nums text-muted-foreground">
-          {count} · {tokens(total)}
-        </span>
-      </button>
-      {isOpen && <div className="pb-3 pl-6">{children}</div>}
-    </div>
-  )
-}
-
 const sum = (rows: { tokens: number }[]) => rows.reduce((n, row) => n + row.tokens, 0)
 const byTokens = <T extends { tokens: number }>(rows: T[]) => [...rows].sort((a, b) => b.tokens - a.tokens)
 
-/** The MCP tools, grouped by server, the biggest server first. Tools that load on demand are dimmed. */
-function McpTools({ context }: { context: Context }) {
-  const servers = new Map<string, Context['mcpTools']>()
-  for (const tool of context.mcpTools) servers.set(tool.serverName, [...(servers.get(tool.serverName) ?? []), tool])
-  const sorted = [...servers].sort((a, b) => sum(b[1]) - sum(a[1]))
-  return sorted.map(([server, tools]) => (
-    <Details key={server} title={server} count={tools.length} total={sum(tools)}>
-      {byTokens(tools).map(tool => (
-        <TokenRow key={tool.name} row={{ name: tool.name.split('__').slice(2).join('__') || tool.name, tokens: tool.tokens, isMuted: !tool.isLoaded }} max={context.maxTokens} isDeferred={!tool.isLoaded} />
-      ))}
-    </Details>
-  ))
+/** A part of a row: its name and tokens, and its own parts. `isEstimate` marks a share of a total, not a count. */
+type Part = { name: string; tokens: number; isEstimate?: boolean; isMuted?: boolean; parts?: Part[] }
+
+/** Splits `total` among `items` by their length: Claude Code counts only the total of these. */
+function split(total: number, items: { name: string; chars: number }[]): Part[] {
+  const chars = items.reduce((n, item) => n + item.chars, 0)
+  return byTokens(items.map(item => ({ name: item.name, tokens: chars ? (total * item.chars) / chars : 0, isEstimate: true })))
 }
 
-/** The context use of one session, drawn like /context: the total, a bar, one row per category and the lists under it. */
-function ContextCard({ context }: { context: Context }) {
-  const { maxTokens: max } = context
-  const used = context.categories.filter(c => c.kind === 'used')
-  const colors = new Map(used.map((c, i) => [c.name, PALETTE[i % PALETTE.length]]))
+/** The MCP tools grouped by server, the biggest server first, each server with its tools. */
+function byServer(tools: Context['mcpTools'], connectors: Record<string, string>): Part[] {
+  const servers = new Map<string, Context['mcpTools']>()
+  for (const tool of tools) servers.set(tool.serverName, [...(servers.get(tool.serverName) ?? []), tool])
+  return byTokens(
+    [...servers].map(([server, list]) => ({
+      name: UUID.test(server) ? (connectors[server] ?? `Claude.ai connector ${server.slice(0, 8)}`) : server,
+      tokens: sum(list),
+      parts: byTokens(list).map(tool => ({ name: tool.name.split('__').slice(2).join('__') || tool.name, tokens: tool.tokens })),
+    })),
+  )
+}
+
+/**
+ * The parts of one /context row, where the mod has them. A row is matched by its name, as /context prints it.
+ * System prompt sections and built-in tools are shares of the row's total, by text length.
+ */
+function partsOf(category: Context['categories'][number], context: Context, connectors: Record<string, string>): Part[] | undefined {
+  const name = category.name.toLowerCase()
+  const builtIn = context.tools ?? []
+  if (name === 'system prompt' && context.sections?.length) return split(category.tokens, context.sections)
+  if (name === 'system tools' && builtIn.length) return split(category.tokens, builtIn.filter(tool => !tool.isDeferred))
+  if (name === 'system tools (deferred)' && builtIn.length) return split(category.tokens, builtIn.filter(tool => tool.isDeferred))
+  if (name === 'mcp tools') return byServer(context.mcpTools.filter(tool => tool.isLoaded), connectors)
+  if (name === 'mcp tools (deferred)') return byServer(context.mcpTools.filter(tool => !tool.isLoaded), connectors)
+  if (name === 'custom agents') return byTokens(context.agents)
+  if (name === 'skills') return byTokens(context.skills)
+  if (name === 'memory files') return byTokens(context.memoryFiles.map(file => ({ name: file.path, tokens: file.tokens })))
+  return undefined
+}
+
+/** One row with a color square, the name, the tokens and the share of the window. A row with parts opens to show them. */
+function Row({ part, max, color, depth = 0, isDeferred }: { part: Part; max: number; color?: string; depth?: number; isDeferred?: boolean }) {
+  const [isOpen, setOpen] = useState(false)
+  const canOpen = !!part.parts?.length
+  const mark = part.isEstimate ? '~' : ''
+  return (
+    <>
+      <button
+        type="button"
+        disabled={!canOpen}
+        onClick={() => setOpen(!isOpen)}
+        aria-expanded={canOpen ? isOpen : undefined}
+        className={cn('flex w-full items-center gap-2.5 rounded-md py-1.5 pr-1 text-left text-[14px]', canOpen && 'hover:bg-accent/50')}
+        style={{ paddingLeft: depth * 22 + 4 }}
+      >
+        <ChevronRight className={cn('size-3.5 flex-none text-muted-foreground transition-transform', isOpen && 'rotate-90', !canOpen && 'invisible')} />
+        {depth === 0 && <span className="size-3 flex-none rounded-[3px]" style={{ background: color ?? 'transparent', border: color ? undefined : '1px solid var(--border)' }} />}
+        <span className={cn('min-w-0 flex-1 truncate', (part.isMuted || depth > 0) && 'text-muted-foreground', depth > 0 && 'text-[13.5px]')} title={part.name}>
+          {part.name}
+          {canOpen && <span className="ml-2 text-[12px] text-muted-foreground">{part.parts!.length}</span>}
+        </span>
+        <span className="w-20 flex-none text-right tabular-nums text-muted-foreground">
+          {mark}
+          {tokens(part.tokens)}
+        </span>
+        <span className="w-16 flex-none text-right tabular-nums text-muted-foreground">{isDeferred ? '—' : `${mark}${percent(part.tokens, max)}`}</span>
+      </button>
+      {isOpen && part.parts!.map(child => <Row key={child.name} part={child} max={max} depth={depth + 1} isDeferred={isDeferred} />)}
+    </>
+  )
+}
+
+/** The context use of one session, drawn like /context: the total, a bar, and one row per category that opens to its parts. */
+function ContextCard({ context, connectors }: { context: Context; connectors: Record<string, string> }) {
+  const { maxTokens: max, totalTokens: used } = context
+  const usedRows = context.categories.filter(c => c.kind === 'used')
+  const colors = new Map(usedRows.map((c, i) => [c.name, PALETTE[i % PALETTE.length]]))
   const buffer = context.categories.filter(c => c.kind === 'buffer')
-  const usedTotal = context.totalTokens
-  const rows = context.categories.filter(c => c.kind !== 'deferred')
-  const deferred = context.categories.filter(c => c.kind === 'deferred')
   const color = (c: Context['categories'][number]) => (c.kind === 'used' ? colors.get(c.name) : c.kind === 'buffer' ? BUFFER : undefined)
-  const loadedMcp = context.mcpTools.filter(tool => tool.isLoaded)
+  const part = (c: Context['categories'][number]): Part => ({ name: c.name, tokens: c.tokens, isMuted: c.kind === 'free', parts: partsOf(c, context, connectors) })
+  // The conversation itself is left out: the mod changes nothing in it. The total above still counts it.
+  const rows = context.categories.filter(c => c.kind !== 'deferred' && c.name !== 'Messages')
+  const deferred = context.categories.filter(c => c.kind === 'deferred')
+  const hasEstimates = !!(context.sections?.length || context.tools?.length)
 
   return (
     <div className="mt-6 rounded-xl border bg-card px-5 py-4">
       <div className="flex items-baseline justify-between">
-        <div className="text-[22px] font-semibold tabular-nums">{percent(usedTotal, max).replace(/\.0%$/, '%')} used</div>
+        <div className="text-[22px] font-semibold tabular-nums">{percent(used, max).replace(/\.0%$/, '%')} used</div>
         <div className="tabular-nums text-muted-foreground">
-          {tokens(usedTotal)} / {tokens(max)}
+          {tokens(used)} / {tokens(max)}
         </div>
       </div>
-      <div className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${tokens(usedTotal)} of ${tokens(max)} tokens used`}>
-        {used.map(c => (
+      <div className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${tokens(used)} of ${tokens(max)} tokens used`}>
+        {usedRows.map(c => (
           <div key={c.name} title={`${c.name}: ${tokens(c.tokens)}`} style={{ width: `${(c.tokens / max) * 100}%`, background: colors.get(c.name) }} />
         ))}
         <div className="flex-1" />
@@ -110,44 +135,28 @@ function ContextCard({ context }: { context: Context }) {
 
       <div className="mt-4">
         {rows.map(c => (
-          <TokenRow key={c.name} row={{ name: c.name, tokens: c.tokens, color: color(c), isMuted: c.kind === 'free' }} max={max} />
+          <Row key={c.name} part={part(c)} max={max} color={color(c)} />
         ))}
       </div>
       {deferred.length > 0 && (
         <div className="mt-2 border-t pt-2">
           {deferred.map(c => (
-            <TokenRow key={c.name} row={{ name: c.name, tokens: c.tokens, isMuted: true }} max={max} isDeferred />
+            <Row key={c.name} part={{ ...part(c), isMuted: true }} max={max} isDeferred />
           ))}
-          <div className="pb-1 text-[12px] text-muted-foreground">Deferred tools load only when Claude searches for them, so they are not in the window.</div>
+          <div className="px-1 pt-1 text-[12px] text-muted-foreground">Deferred tools load only when Claude searches for them, so they are not in the window.</div>
         </div>
       )}
-
-      <div className="mt-3">
-        <Details title="MCP tools" count={context.mcpTools.length} total={sum(loadedMcp)}>
-          <McpTools context={context} />
-        </Details>
-        <Details title="Skills" count={context.skills.length} total={sum(context.skills)}>
-          {byTokens(context.skills).map(skill => (
-            <TokenRow key={skill.name} row={skill} max={max} />
-          ))}
-        </Details>
-        <Details title="Custom agents" count={context.agents.length} total={sum(context.agents)}>
-          {byTokens(context.agents).map(agent => (
-            <TokenRow key={agent.name} row={agent} max={max} />
-          ))}
-        </Details>
-        <Details title="Memory files" count={context.memoryFiles.length} total={sum(context.memoryFiles)}>
-          {byTokens(context.memoryFiles).map(file => (
-            <TokenRow key={file.path} row={{ name: file.path, tokens: file.tokens }} max={max} />
-          ))}
-        </Details>
-      </div>
+      {hasEstimates && (
+        <div className="px-1 pt-2 text-[12px] text-muted-foreground">
+          ~ marks an estimate. Claude Code counts only the total of the system prompt and of the built-in tools, so the mod splits each total by the length of each part.
+        </div>
+      )}
     </div>
   )
 }
 
 /** The Home tab: the context use of a recent session, newest first, with a menu to pick another session. */
-export function HomeView({ section, contexts }: { section: Section; contexts: Context[] }) {
+export function HomeView({ section, contexts, connectors }: { section: Section; contexts: Context[]; connectors: Record<string, string> }) {
   const [picked, setPicked] = useState<string>()
   const context = contexts.find(c => c.id === picked) ?? contexts[0]
   return (
@@ -174,7 +183,7 @@ export function HomeView({ section, contexts }: { section: Section; contexts: Co
       </div>
       {context ? (
         <>
-          <ContextCard context={context} />
+          <ContextCard context={context} connectors={connectors} />
           <div className="mt-3 text-[12px] text-muted-foreground">
             {folder(context.cwd)} · {context.model} · counted {ago(context.savedAt)}
           </div>

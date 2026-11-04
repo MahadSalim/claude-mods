@@ -25,6 +25,10 @@ export const FILES = {
   disabled: 'disabled.json',
   server: 'server.json',
   history: 'history.json',
+  /** A one-sentence summary of each item, by `<kind>/<name>`, with a hash of the text that it summarizes. */
+  summaries: 'summaries.json',
+  /** The names of Claude.ai connectors by their id, which their tool names carry in place of a name. */
+  connectors: 'connectors.json',
 }
 
 /** The kinds that `disabled.json` lists by name: skill names, section ids, reminder types, subagent and command names. */
@@ -43,6 +47,37 @@ export function parseDisabled(text) {
   for (const kind of DISABLED_KINDS) out[kind] = Array.isArray(raw[kind]) ? raw[kind].filter(name => typeof name === 'string') : []
   out.hooks = raw.hooks && typeof raw.hooks === 'object' && !Array.isArray(raw.hooks) ? raw.hooks : {}
   return out
+}
+
+/**
+ * The reminders whose text is fixed prose from Claude Code, the same in every session: the only ones the mod saves
+ * and lets you edit. Others can carry private data, such as your email, folder paths, file contents or instructions
+ * files, so they can be turned off, but their text is never written to disk.
+ */
+export const SAVED_REMINDERS = new Set([
+  'auto_mode', 'auto_mode_exit', 'plan_mode', 'plan_mode_exit', 'plan_mode_reentry', 'task_reminder', 'todo_reminder',
+  'silent_turn_reminder', 'tool_search_usage_reminder', 'output_style', 'output_style_instructions', 'language', 'model',
+  'remote_session_change', 'critical_system_reminder',
+])
+
+/** What the reminders whose text is not saved are for, shown in the window in place of their text. */
+export const REMINDER_NOTES = {
+  session_context: 'Details of your account, such as your email.',
+  environment: 'The working folder and other details of the session.',
+  instructions: 'Your CLAUDE.md and AGENTS.md instructions.',
+  invoked_skills: 'Skills used earlier in the session, kept across compaction.',
+  diagnostics: 'New errors and warnings from your editor.',
+  compact_file_reference: 'Files that Claude read before the conversation was compacted.',
+  inlined_image_paths: 'Where attached images are saved.',
+  date: 'Today’s date.',
+  total_tokens_reminder: 'How many tokens are left in the session’s budget.',
+  deferred_tools_delta: 'Tools that load on demand through ToolSearch.',
+  mcp_instructions_delta: 'Instructions from connected MCP servers.',
+  agent_listing_delta: 'The subagents that Claude can start.',
+  hook_additional_context: 'Text that your hooks add.',
+  edited_text_file: 'Files that changed since Claude read them.',
+  file: 'The contents of a file that you mentioned.',
+  nested_memory: 'CLAUDE.md files from folders that Claude works in.',
 }
 
 /** Turns an id into a file or folder name that every file system accepts. */
