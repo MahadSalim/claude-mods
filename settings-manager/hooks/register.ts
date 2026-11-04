@@ -43,14 +43,14 @@ async function entries($: $, dir: string) {
 }
 
 /** Reads the `name` of each item in a folder: Markdown frontmatter, a JSON `name`, or the file name. */
-async function names($: $, dir: string, kind: 'directory' | 'file') {
+async function names($: $, dir: string, kind: 'dir' | 'file') {
   const items = (await entries($, dir)).filter(item => item.kind === kind && item.name !== DISABLED)
   return Promise.all(
     items.map(async ({ name }) => {
       const base = name.replace(/\.(md|json)$/, '')
-      const folder = kind === 'directory' ? join(dir, name) : dir
-      const md = kind === 'directory' ? 'SKILL.md' : name.endsWith('.md') ? name : undefined
-      const json = kind === 'directory' ? 'skill.json' : name.endsWith('.json') ? name : undefined
+      const folder = kind === 'dir' ? join(dir, name) : dir
+      const md = kind === 'dir' ? 'SKILL.md' : name.endsWith('.md') ? name : undefined
+      const json = kind === 'dir' ? 'skill.json' : name.endsWith('.json') ? name : undefined
       const text = md && (await $.fs.read(at(folder, md)).catch(() => undefined))
       if (text) return frontmatter(text).name ?? base
       return (json && (await readJson<{ name?: string }>($, at(folder, json), {})).name) || base
@@ -62,8 +62,8 @@ async function refresh($: $) {
   const fileBases = async (dir: string) =>
     (await entries($, dir)).filter(item => item.kind === 'file' && item.name.endsWith('.md')).map(item => item.name.slice(0, -3))
   const [onSkills, offSkills, offSections, offReminders, offAgents, offCommands] = await Promise.all([
-    names($, DIRS.skills, 'directory'),
-    names($, join(DIRS.skills, DISABLED), 'directory'),
+    names($, DIRS.skills, 'dir'),
+    names($, join(DIRS.skills, DISABLED), 'dir'),
     fileBases(join(DIRS.prompts, DISABLED)),
     fileBases(join(DIRS.reminders, DISABLED)),
     names($, join(DIRS.agents, DISABLED), 'file'),

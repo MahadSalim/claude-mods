@@ -9,9 +9,16 @@ const LISTING = [
   '- anthropic-skills:pdf: Read PDFs.',
 ].join('\n')
 
-/** Answers the mod's `$.fs` calls from a map of paths to file text. */
+/**
+ * Answers the mod's `$.fs` calls from a map of paths to file text. Off Windows the engine reads
+ * `C:/cfg` as a relative path and puts the working folder in front, so paths are matched from ROOT.
+ */
 function disk(on: On, files: Record<string, string>) {
-  const norm = (path: string) => path.replace(/\\/g, '/')
+  const norm = (path: string) => {
+    const unix = path.replace(/\\/g, '/')
+    const at = unix.indexOf(ROOT)
+    return at < 0 ? unix : unix.slice(at)
+  }
   const store = new Map(Object.entries(files))
   on('fs.read', ($, e) => (store.has(norm(e.path)) ? { value: store.get(norm(e.path))! } : { deny: 'ENOENT' }))
   on('fs.write', ($, e) => {
@@ -21,11 +28,11 @@ function disk(on: On, files: Record<string, string>) {
   on('fs.exists', ($, e) => ({ value: [...store.keys()].some(key => key === norm(e.path) || key.startsWith(`${norm(e.path)}/`)) }))
   on('fs.list', ($, e) => {
     const dir = `${norm(e.path ?? '')}/`
-    const children = new Map<string, 'file' | 'directory'>()
+    const children = new Map<string, 'file' | 'dir'>()
     for (const key of store.keys()) {
       if (!key.startsWith(dir)) continue
       const [head = '', ...rest] = key.slice(dir.length).split('/')
-      children.set(head, rest.length ? 'directory' : 'file')
+      children.set(head, rest.length ? 'dir' : 'file')
     }
     return { value: [...children].map(([name, kind]) => ({ name, kind, size: 0, mtimeMs: 0, isLink: false })) }
   })
