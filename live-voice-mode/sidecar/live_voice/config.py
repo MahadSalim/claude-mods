@@ -1,7 +1,7 @@
 """Sidecar settings: model folders, the speaking voice, the engine's files, and audio tuning."""
 
-WHISPER = "C:/Users/Mahad/models/whisper-large-v3-turbo"
-KOKORO = "C:/Users/Mahad/models/kokoro"
+WHISPER = "C:/models/whisper-large-v3-turbo"
+KOKORO = "C:/models/kokoro"
 VOICE = "af_heart"
 
 # Words Whisper is biased towards hearing.

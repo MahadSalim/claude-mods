@@ -13,9 +13,6 @@ const PROJECTS = path.join(CONFIG, 'projects')
 const HOME = path.join(CONFIG, 'usage-log')
 const EVENTS = path.join(HOME, 'events')
 const CACHE = path.join(HOME, 'cache.json')
-// What sessions loaded into their context, and the rules applied to it.
-const CONTEXT = path.join(HOME, 'context.json')
-const RULES = path.join(HOME, 'rules.json')
 const CACHE_VERSION = 2
 const PORT = Number(process.env.PORT) || 5198
 // Host headers the server answers.
@@ -25,13 +22,10 @@ const PRICES = JSON.parse(fs.readFileSync(path.join(HERE, 'prices.json'), 'utf8'
 const READ_TYPES = new Set(['user', 'assistant', 'system', 'custom-title', 'ai-title'])
 // Characters of one chat block sent to the page.
 const BLOCK_CHARS = 4000
-// Characters of a request body the server reads.
-const BODY_CHARS = 2_000_000
 const CHARS_PER_TOKEN = 4
 const WEEK_MS = 7 * 86_400_000
-// Milliseconds since its last activity a session counts as running, and as holding a warm prompt cache.
+// Milliseconds since its last activity a session counts as running.
 const LIVE_MS = 300_000
-const OPEN_MS = 3_600_000
 const WINDOWS = { five_hour: 'p5', seven_day: 'p7' }
 const TOKENS = ['input', 'output', 'cacheWrite', 'cacheRead']
 // Dollar figures of a request: its cost, the cost by token type, and what cache reads saved.
@@ -40,8 +34,6 @@ const DOLLARS = ['cost', 'cIn', 'cOut', 'cRead', 'cWrite', 'saved']
 const FILE_TOOLS = new Set(['Read', 'Edit', 'Write'])
 // Git steps a Bash command runs, by name.
 const GIT = { commit: /\bgit\s+commit\b/, pr: /\bgh\s+pr\s+create\b/ }
-const ACTIONS = new Set(['defer', 'drop', 'rewrite'])
-const NO_CAP = { on: false, k: 10, part: true }
 
 /** The price row of a model id: the longest prefix in the table. */
 const rate = model =>
@@ -406,7 +398,6 @@ const build = () => {
 
   const week = plan.sevenDay.at(-1)
   const weekStart = week?.resetsAt > Date.now() ? week.resetsAt - WEEK_MS : Infinity
-  const blocks = {}
   const other = {}
 
   for (const r of requests) {
@@ -414,10 +405,6 @@ const build = () => {
   }
 
   for (const row of rows) {
-    for (const [type, n] of Object.entries(row.blocks ?? {})) {
-      blocks[type] = (blocks[type] ?? 0) + n
-    }
-
     for (const limit of row.usage?.rateLimits ?? []) {
       if (!WINDOWS[limit.kind]) {
         other[limit.kind] = { kind: limit.kind, at: row.at, percent: limit.percentUsed, resetsAt: Date.parse(limit.resetsAt) || null }
@@ -427,7 +414,7 @@ const build = () => {
 
   plan.other = Object.values(other)
 
-  return { sessions, plan, blocks, loggingSince: rows[0]?.at ?? null }
+  return { sessions, plan, loggingSince: rows[0]?.at ?? null }
 }
 
 /** The log summary of a session: engine cost, context fill, turn outcomes and how it ended. */
@@ -702,86 +689,6 @@ const chat = async (file, s, isAgent) => {
   return { turns: turns.map(({ requests, ...kept }) => ({ ...kept, ...Object.values(requests).reduce((total, r) => add(total, { ...r, cost: cost(r) }), zeros()) })) }
 }
 
-/** A JSON file's value, or the fallback when the file holds none. */
-const readJson = (file, fallback) => fsp.readFile(file, 'utf8').then(JSON.parse).catch(() => fallback)
-
-/** What one cache miss costs a session, in dollars: its context written to the cache again, not read from it. */
-const missOf = s => {
-  const last = s.requests.findLast(r => !r.agent)
-  const price = last && rate(last.model)
-  const written = s.requests.reduce((total, r) => total + r.cacheWrite, 0)
-  const hourly = written ? s.requests.reduce((total, r) => total + r.cacheWrite1h, 0) / written : 0
-  const write = PRICES.write5m + (PRICES.write1h - PRICES.write5m) * hourly
-
-  return price ? ((last.input + last.cacheRead + last.cacheWrite) * (price.input * write - price.read)) / 1e6 : 0
-}
-
-/** The loaded items, the rules on them and what applying a change costs, as /api/context sends them. */
-const context = async () => {
-  const [catalog, { rules = {}, order = null, cap, prev }] = await Promise.all([readJson(CONTEXT, {}), readJson(RULES, {})])
-  const sessions = [...built.sessions.values()]
-  const lastAt = s => Math.max(0, ...s.files.map(f => f.end), s.rows.at(-1)?.at ?? 0)
-  const open = sessions.filter(s => Date.now() - lastAt(s) < OPEN_MS && !s.rows.some(row => row.ev === 'session.end'))
-  const reads = sessions.flatMap(s => s.uses.filter(use => use.name === 'Read' && !use.agent && use.chars && Date.now() - use.at < 30 * 86_400_000))
-
-  return {
-    sessions: Object.keys(catalog.sessions ?? {}).length,
-    items: Object.entries(catalog.items ?? {}).map(([id, { at, ...item }]) => ({
-      id,
-      ...item,
-      tok: item.tok ?? Math.round(item.chars / CHARS_PER_TOKEN),
-      seen: item.kind === 'blocks' || item.name === 'skill_listing' ? built.blocks[item.name] ?? 0 : undefined,
-    })),
-    rules,
-    order,
-    cap: { ...NO_CAP, ...cap },
-    canUndo: Boolean(prev),
-    open: open.length,
-    miss: open.reduce((total, s) => total + missOf(s), 0),
-    reads: reads.sort((a, b) => b.chars - a.chars).slice(0, 12).map(use => ({ file: use.file, tokens: Math.round(use.chars / CHARS_PER_TOKEN) })),
-  }
-}
-
-/** A request's JSON body. */
-const bodyOf = async request => {
-  let text = ''
-
-  for await (const chunk of request) {
-    text += chunk
-
-    if (text.length > BODY_CHARS) {
-      throw new Error('body too large')
-    }
-  }
-
-  return JSON.parse(text)
-}
-
-/** The rules a posted document holds, or undefined when it is not a rules document. */
-const rulesOf = ({ rules = {}, order = null, cap = {} }) => {
-  const isRule = rule => ACTIONS.has(rule?.a) && (rule.text === undefined || typeof rule.text === 'string')
-  const isOrder = order === null || (Array.isArray(order) && order.every(id => typeof id === 'string'))
-
-  return typeof rules === 'object' && Object.values(rules).every(isRule) && isOrder
-    ? { rules, order, cap: { on: Boolean(cap.on), k: Math.min(1000, Math.max(1, Number(cap.k) || NO_CAP.k)), part: cap.part !== false } }
-    : undefined
-}
-
-/** Writes the posted rules, or the ones before the last write when the post asks to undo; resolves whether it wrote. */
-const applyRules = async request => {
-  const [posted, { prev, ...before }] = await Promise.all([bodyOf(request), readJson(RULES, {})])
-  const next = posted.undo ? prev : rulesOf(posted)
-
-  if (!next) {
-    return false
-  }
-
-  await fsp.mkdir(HOME, { recursive: true })
-  await fsp.writeFile(RULES, JSON.stringify(posted.undo ? next : { ...next, prev: before }))
-
-  return true
-}
-
 /** The price table as the page shows it: dollars per million tokens, by model prefix. */
 const prices = () =>
   Object.fromEntries(Object.entries(PRICES.models).map(([model, { input, output, read }]) => [model, { input, output, read, write5m: input * PRICES.write5m, write1h: input * PRICES.write1h }]))
@@ -802,7 +709,6 @@ const routes = {
 
     return file && chat(file.file, s, Boolean(agent))
   },
-  '/api/context': context,
 }
 
 http
@@ -823,9 +729,7 @@ http
       }
 
       if (request.method === 'POST') {
-        const isRules = url.pathname === '/api/rules' && request.headers['content-type']?.startsWith('application/json')
-
-        return isRules && (await applyRules(request)) ? send(200, 'application/json', '{}') : send(400, 'application/json', '{"error":"not a rules document"}')
+        return send(404, 'application/json', '{"error":"not found"}')
       }
 
       if (!routes[route]) {

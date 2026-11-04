@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>prompt-strip</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='5' width='6' height='6' rx='1' fill='%232b50d8'/%3E%3Crect x='8' y='5' width='3' height='6' rx='1' fill='%239eabbf'/%3E%3Crect x='12' y='5' width='3' height='6' rx='1' fill='%23b3245f'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #e9edf2;
+  --panel: #f7f9fb;
+  --sunk: #dfe5ec;
+  --ink: #172030;
+  --muted: #5d6a7e;
+  --faint: #8995a7;
+  --line: #cdd4de;
+  --accent: #2b50d8;
+  --accent-soft: #dbe3ff;
+  --cut: #b3245f;
+  --cut-soft: #f6dde7;
+  --edit: #0e7c66;
+  --edit-soft: #d5efe8;
+  --seg: #9eabbf;
+  --seg-alt: #b6c1d1;
+  --sans: "Instrument Sans", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #10151d;
+    --panel: #171e29;
+    --sunk: #0c1117;
+    --ink: #e2e8f1;
+    --muted: #8c98ab;
+    --faint: #66728a;
+    --line: #2a3443;
+    --accent: #7c98ff;
+    --accent-soft: #232f55;
+    --cut: #f06a9c;
+    --cut-soft: #3a1d2a;
+    --edit: #3fc2a2;
+    --edit-soft: #15342d;
+    --seg: #46536a;
+    --seg-alt: #56647c;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--sans); }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.app { display: flex; flex-direction: column; height: 100vh; }
+.app > .main { flex: 1; }
+
+/* Header */
+.top { display: flex; align-items: center; gap: 20px; padding: 14px 24px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+.brand { font-weight: 700; font-size: 19px; letter-spacing: -0.02em; display: flex; align-items: baseline; gap: 2px; }
+.brand s { color: var(--cut); text-decoration-thickness: 2px; }
+.summary { color: var(--muted); flex: 1; min-width: 240px; }
+.summary b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.actions { display: flex; gap: 8px; align-items: center; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 7px; padding: 6px 13px; font-weight: 500; }
+.btn:hover:not(:disabled) { border-color: var(--muted); }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+@media (prefers-color-scheme: dark) { .btn.primary { color: #0c1117; } }
+.switch { display: inline-flex; align-items: center; gap: 9px; border: 0; background: none; padding: 4px 0; color: var(--muted); }
+.switch i { width: 34px; height: 20px; border-radius: 10px; background: var(--line); position: relative; transition: background .15s; }
+.switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--panel); transition: transform .15s; }
+.switch[aria-checked="true"] { color: var(--ink); }
+.switch[aria-checked="true"] i { background: var(--accent); }
+.switch[aria-checked="true"] i::after { transform: translateX(14px); }
+.switch[aria-checked="false"] { color: var(--cut); font-weight: 600; }
+.switch:disabled { opacity: 0.5; cursor: progress; }
+.note { font-size: 13px; color: var(--muted); }
+.note.bad { color: var(--cut); }
+
+/* Token strip */
+.stripwrap { padding: 14px 24px 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.striphead { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--muted); margin-bottom: 7px; }
+.striphead b { color: var(--ink); font-weight: 600; }
+.strip { display: flex; height: 34px; gap: 1px; border-radius: 4px; overflow: hidden; background: var(--sunk); }
+.strip button { border: 0; padding: 0; min-width: 1px; background: var(--seg); transition: flex-grow .25s ease, background .15s; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 500 11.5px var(--sans); color: var(--ink); text-align: left; }
+.strip button span { padding: 0 7px; }
+.strip button.edited { color: #fff; }
+.strip button.off span { background: var(--cut-soft); color: var(--cut); border-radius: 3px; padding: 1px 5px; margin-left: 4px; }
+.strip button:nth-child(even) { background: var(--seg-alt); }
+.strip button.edited { background: var(--edit); }
+.strip button.off { background: repeating-linear-gradient(135deg, var(--cut) 0 2px, var(--cut-soft) 2px 6px); }
+.strip button.sel { box-shadow: inset 0 0 0 2px var(--accent); }
+.strip button:hover { filter: brightness(1.12); }
+.legend { display: flex; gap: 16px; font-size: 12px; color: var(--muted); margin-top: 7px; flex-wrap: wrap; }
+.legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; background: var(--seg); }
+.legend .l-edit::before { background: var(--edit); }
+.legend .l-off::before { background: repeating-linear-gradient(135deg, var(--cut) 0 2px, var(--cut-soft) 2px 4px); }
+
+/* Body */
+.main { display: grid; grid-template-columns: 210px minmax(300px, 420px) 1fr; min-height: 0; }
+.rail { border-right: 1px solid var(--line); padding: 14px 10px; overflow: auto; }
+.rail button { display: flex; justify-content: space-between; align-items: baseline; width: 100%; text-align: left; border: 0; background: none; padding: 8px 12px; border-radius: 7px; color: var(--muted); }
+.rail button:hover { background: var(--sunk); color: var(--ink); }
+.rail button[aria-current="true"] { background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+.rail small { font-variant-numeric: tabular-nums; font-size: 12px; }
+.rail small em { font-style: normal; color: var(--cut); }
+.rail hr { border: 0; border-top: 1px solid var(--line); margin: 10px 12px; }
+
+.list { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.listtools { padding: 12px 14px; display: flex; gap: 8px; border-bottom: 1px solid var(--line); }
+.listtools input, .listtools select { border: 1px solid var(--line); background: var(--panel); border-radius: 7px; padding: 6px 10px; min-width: 0; }
+.listtools { flex-wrap: wrap; }
+.listtools input { flex: 1 1 100%; }
+.listtools select { flex: 1 1 0; max-width: 170px; }
+.listtools .btn { white-space: nowrap; }
+.listtools .btn:last-child { margin-left: auto; }
+.hint { padding: 10px 16px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); }
+.rows { overflow: auto; flex: 1; padding: 6px 0 20px; }
+.row { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 7px 14px 7px 10px; border-left: 3px solid transparent; cursor: pointer; }
+.row:hover { background: var(--panel); }
+.row.sel { background: var(--panel); border-left-color: var(--accent); }
+.row.drag-over { box-shadow: inset 0 2px 0 var(--accent); }
+.row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row.off .name { color: var(--faint); text-decoration: line-through; text-decoration-color: var(--cut); }
+.row .meta { font-size: 12px; color: var(--faint); }
+.row .tok { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+.row .tok ins { text-decoration: none; color: var(--edit); display: block; }
+.row .size { display: block; width: 44px; height: 3px; margin: 4px 0 0 auto; border-radius: 2px; background: var(--sunk); overflow: hidden; }
+.row .size i { display: block; height: 100%; margin-left: auto; background: var(--seg); }
+.row.off .size i { background: var(--cut); opacity: 0.5; }
+.row.stale .name { color: var(--faint); }
+.tick { width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--muted); background: none; padding: 0; display: grid; place-items: center; }
+.tick:disabled { opacity: 0.35; cursor: default; }
+.tick[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
+.tick[aria-checked="true"]::after { content: ""; width: 9px; height: 5px; border: solid #fff; border-width: 0 0 2px 2px; transform: translate(0, -1px) rotate(-45deg); }
+.boundary { margin: 8px 14px; font-size: 12px; color: var(--faint); display: flex; align-items: center; gap: 10px; }
+.boundary::before, .boundary::after { content: ""; flex: 1; border-top: 1px dashed var(--line); }
+.group { padding: 12px 16px 4px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.empty { padding: 40px 24px; color: var(--muted); max-width: 46ch; }
+.empty b { color: var(--ink); display: block; font-size: 16px; margin-bottom: 6px; }
+
+/* Inspector */
+.insp { display: flex; flex-direction: column; min-height: 0; overflow: auto; }
+.insphead { padding: 18px 26px 14px; border-bottom: 1px solid var(--line); }
+.insphead h2 { margin: 0 0 4px; font-size: 22px; letter-spacing: -0.015em; font-weight: 600; word-break: break-all; }
+.facts { color: var(--muted); font-size: 13px; display: flex; gap: 14px; flex-wrap: wrap; }
+.controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; padding: 2px; background: var(--sunk); }
+.seg button { border: 0; background: none; padding: 5px 14px; border-radius: 6px; color: var(--muted); font-weight: 500; }
+.seg button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+.seg button.cutbtn[aria-pressed="true"] { color: var(--cut); }
+.inspbody { padding: 16px 26px 30px; display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
+.tabs { display: flex; gap: 18px; border-bottom: 1px solid var(--line); }
+.tabs button { border: 0; background: none; padding: 6px 0 9px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 500; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+textarea.text, .diff, pre.preview { font: 13px/1.6 var(--mono); }
+textarea.text { width: 100%; flex: 1; min-height: 340px; resize: vertical; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 14px 16px; tab-size: 2; }
+textarea.text:disabled { color: var(--muted); }
+.textfoot { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); gap: 12px; flex-wrap: wrap; }
+.diff { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 10px 0; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+.diff div { padding: 0 16px; }
+.diff .add { background: var(--edit-soft); }
+.diff .del { background: var(--cut-soft); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--cut) 50%, transparent); }
+.diff .same { color: var(--muted); }
+.idinput { border: 1px solid var(--line); border-radius: 7px; background: var(--panel); padding: 6px 10px; font: 14px var(--mono); }
+.callout { font-size: 13px; color: var(--muted); border-left: 3px solid var(--line); padding: 2px 0 2px 12px; }
+
+/* Preview */
+.previewwrap { grid-column: 2 / 4; overflow: auto; padding: 22px 30px 40px; }
+.previewwrap h2 { margin: 0 0 4px; font-size: 22px; font-weight: 600; letter-spacing: -0.015em; }
+.pv { display: grid; grid-template-columns: 170px 1fr; gap: 0 22px; margin-top: 18px; max-width: 1100px; }
+.pv .gut { font-size: 12.5px; color: var(--muted); padding-top: 14px; text-align: right; word-break: break-all; }
+.pv .gut b { display: block; color: var(--ink); font-weight: 600; }
+.pv pre.preview { margin: 0; padding: 12px 0 12px 18px; border-left: 2px solid var(--line); white-space: pre-wrap; word-break: break-word; }
+.pv .gone { padding: 8px 0 8px 18px; border-left: 2px dashed var(--cut); color: var(--cut); font-size: 13px; }
+.pv .edited { border-left-color: var(--edit); }
+.pv .bound { grid-column: 1 / 3; }
+
+.banner { background: var(--cut-soft); color: var(--cut); padding: 8px 24px; font-size: 14px; }
+.banner.info { background: var(--accent-soft); color: var(--ink); }
+
+@media (max-width: 960px) {
+  .app { height: auto; min-height: 100vh; }
+  .top, .stripwrap { padding-left: 16px; padding-right: 16px; }
+  body { overflow-x: hidden; }
+  .main { grid-template-columns: minmax(0, 1fr); }
+  .main > * { min-width: 0; }
+  .actions { flex-wrap: wrap; }
+  .btn { white-space: nowrap; }
+  .striphead { flex-direction: column; gap: 2px; }
+  .listtools { flex-wrap: wrap; }
+  .listtools input { flex-basis: 100%; }
+  .rail { display: flex; gap: 4px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px 12px; }
+  .rail button { width: auto; white-space: nowrap; gap: 8px; }
+  .rail hr { display: none; }
+  .list { border-right: 0; border-bottom: 1px solid var(--line); }
+  .rows { max-height: 46vh; }
+  .insphead, .inspbody { padding-left: 16px; padding-right: 16px; }
+  .previewwrap { grid-column: 1; padding: 16px; }
+  .pv { grid-template-columns: 1fr; }
+  .pv .gut { text-align: left; padding-top: 10px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">prompt-<s>strip</s></div>
+    <div class="summary" id="summary">Loading what your sessions load…</div>
+    <div class="actions">
+      <button class="switch" id="paused" role="switch" aria-checked="true" title="Master switch for every rule below. Takes effect immediately, from the next turn of every session."><i></i>Rules active</button>
+      <span class="note" id="note" aria-live="polite"></span>
+      <button class="btn" id="discard" disabled>Discard changes</button>
+      <button class="btn" id="undo" disabled title="Put back the rules from before the last save">Undo last save</button>
+      <button class="btn primary" id="save" disabled title="Ctrl+S">Save</button>
+    </div>
+  </header>
+  <div id="banner"></div>
+  <section class="stripwrap" id="stripwrap"></section>
+  <main class="main" id="main"></main>
+</div>
+<script>
+const LAYERS = [
+  { key: 'sections', prefix: 's', label: 'System prompt', off: 'Strip', hint: 'The sections of the system prompt, in the order they are sent. Drag to reorder; sections above the cache boundary always go first.' },
+  { key: 'context', prefix: 'c', label: 'First message', off: 'Strip', hint: 'Blocks sent with the first message of each conversation: your CLAUDE.md files, your email, the date.' },
+  { key: 'reminders', prefix: 'r', label: 'Reminders', off: 'Strip', hint: 'System reminders injected into turns: mode changes, tool and skill listings, notices. A rewrite replaces every reminder of that type.' },
+  { key: 'tools', prefix: 't', label: 'Tools', off: 'Defer', hint: 'Tool descriptions. A deferred tool waits behind ToolSearch until the model asks for it by name.' },
+  { key: 'skills', prefix: 'k', label: 'Skill bodies', off: 'Strip', hint: 'The text a skill expands to when it runs. A stripped skill runs with no instructions.' },
+  { key: 'agents', prefix: 'a', label: 'Subagents', off: 'Hide', noEdit: true, hint: 'Subagent types offered to the Agent tool. A hidden type is left out of the listing and refused at dispatch.' },
+  { key: 'commands', prefix: 'm', label: 'Commands', off: 'Hide', hint: 'Slash command descriptions in the menu. A hidden command still runs when typed in full.' },
+]
+const ADDED = 'prompt-strip:'
+const tok = chars => Math.round(chars / 4)
+const fmt = n => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n))
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+const clone = v => JSON.parse(JSON.stringify(v))
+const $ = id => document.getElementById(id)
+
+const S = { data: null, saved: null, draft: null, layer: 'sections', sel: {}, q: '', source: '', sort: 'name', tab: 'edit', note: '', isDown: false }
+try { Object.assign(S, JSON.parse(localStorage.getItem('prompt-strip-view') || '{}'), { data: null }) } catch {}
+const remember = () => { try { localStorage.setItem('prompt-strip-view', JSON.stringify({ layer: S.layer, sel: S.sel, sort: S.sort })) } catch {} }
+
+const isDirty = () => S.draft && JSON.stringify(S.draft) !== JSON.stringify(S.saved)
+const layerOf = key => LAYERS.find(l => l.key === key)
+
+/** Every item of one layer: what sessions loaded, plus your own sections in the system prompt layer. */
+const itemsOf = key => {
+  const items = Object.entries(S.data?.items ?? {}).filter(([, v]) => v.kind === key).map(([id, v]) => ({ id, ...v }))
+  if (key !== 'sections') return items.sort((a, b) => a.name.localeCompare(b.name))
+  const added = S.draft.added.map(a => ({ id: `add:${a.id}`, name: ADDED + a.id, text: a.text, chars: a.text.length, scope: 'session', added: a }))
+  return sortSections([...items, ...added])
+}
+
+/** System prompt sections in the order they are sent: shared first, then your order, then the latest prompt's. */
+const sortSections = items => {
+  const latest = S.data?.compose?.ids ?? []
+  const order = S.draft.order
+  const base = id => { const i = latest.indexOf(id); return i < 0 ? latest.length + 1000 : i }
+  const rank = it => {
+    if (order) { const i = order.indexOf(it.name); if (i >= 0) return i }
+    return (order ? order.length : 0) + base(it.name)
+  }
+  return items.sort((a, b) => (a.scope === 'shared' ? 0 : 1) - (b.scope === 'shared' ? 0 : 1) || rank(a) - rank(b) || a.name.localeCompare(b.name))
+}
+const isStale = it => it.kind === 'sections' && !it.added && S.data?.compose && !S.data.compose.ids.includes(it.name)
+
+const isOff = it => (it.added ? Boolean(it.added.off) : Boolean(S.draft.rules[it.id]?.off))
+const isEdited = it => !it.added && S.draft.rules[it.id]?.text !== undefined
+const textOf = it => (it.added ? it.added.text : (S.draft.rules[it.id]?.text ?? it.text))
+const sentTokens = it => (isOff(it) ? 0 : tok(textOf(it).length))
+
+const patchRule = (id, patch) => {
+  const rule = { ...S.draft.rules[id], ...patch }
+  for (const k of Object.keys(rule)) if (rule[k] === undefined || rule[k] === false) delete rule[k]
+  if (Object.keys(rule).length) S.draft.rules[id] = rule; else delete S.draft.rules[id]
+}
+const setOff = (it, off) => { if (it.added) it.added.off = off || undefined; else patchRule(it.id, { off }) }
+const setText = (it, text) => { if (it.added) { it.added.text = text; return } patchRule(it.id, { text: text === it.text ? undefined : text }) }
+
+/** Lines of a against b as a list of same, deleted and added lines. */
+const diff = (a, b) => {
+  const x = a.split('\n'), y = b.split('\n')
+  if (x.length * y.length > 4_000_000) return null
+  const n = x.length, m = y.length, t = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1))
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) t[i][j] = x[i] === y[j] ? t[i + 1][j + 1] + 1 : Math.max(t[i + 1][j], t[i][j + 1])
+  const out = []; let i = 0, j = 0
+  while (i < n && j < m) {
+    if (x[i] === y[j]) { out.push(['same', x[i]]); i++; j++ }
+    else if (t[i + 1][j] >= t[i][j + 1]) out.push(['del', x[i++]])
+    else out.push(['add', y[j++]])
+  }
+  while (i < n) out.push(['del', x[i++]])
+  while (j < m) out.push(['add', y[j++]])
+  return out
+}
+
+/** Tokens a session start loads: system prompt sections, first-message blocks and the tools listed in front. */
+const totals = () => {
+  let before = 0, after = 0
+  for (const it of [...itemsOf('sections').filter(it => !isStale(it)), ...itemsOf('context')]) { before += it.added ? 0 : tok(it.chars); after += sentTokens(it) }
+  for (const it of itemsOf('tools')) {
+    if (it.deferred) continue
+    before += tok(it.chars)
+    after += isOff(it) ? 0 : tok(textOf(it).length)
+  }
+  return { before, after }
+}
+
+/* Drawing */
+const drawHeader = () => {
+  const { before, after } = totals()
+  $('summary').innerHTML = S.data && Object.keys(S.data.items).length
+    ? `A session start loads about <b>${fmt(before)}</b> tokens of prompt and tool text. With these rules it sends <b>${fmt(after)}</b>${before > after ? `, ${Math.round((1 - after / Math.max(before, 1)) * 100)}% less` : ''}.`
+    : 'Nothing recorded yet.'
+  const dirty = isDirty()
+  $('save').disabled = !dirty
+  $('discard').disabled = !dirty
+  $('undo').disabled = dirty || !S.data?.canUndo
+  const on = S.draft ? !S.draft.paused : true
+  const live = S.saved ? !S.saved.paused : true
+  $('paused').setAttribute('aria-checked', String(live))
+  $('paused').lastChild.textContent = live ? 'Rules active' : 'Rules paused'
+  $('note').textContent = dirty ? 'Unsaved changes' : S.note
+  $('note').className = 'note'
+  $('banner').innerHTML = S.isDown ? '<div class="banner">The dashboard server is not answering. Run /prompt-strip in Claude Code to start it again.</div>'
+    : !live ? '<div class="banner info">Rules are paused: every session sends its prompt exactly as loaded. Your rules are kept; switch them back on to apply them.</div>' : ''
+}
+
+const drawStrip = () => {
+  const wrap = $('stripwrap')
+  const items = S.layer === 'preview' || !S.data ? [] : itemsOf(S.layer).filter(it => !isStale(it) && !it.deferred)
+  wrap.hidden = !items.length
+  if (!items.length) return
+  const before = items.reduce((n, it) => n + (it.added ? 0 : tok(it.chars)), 0)
+  const after = items.reduce((n, it) => n + sentTokens(it), 0)
+  const layer = layerOf(S.layer)
+  const totalGrow = items.reduce((n, it) => n + Math.max(1, isOff(it) ? tok(it.chars) * 0.35 : tok(textOf(it).length)), 0)
+  wrap.innerHTML = `
+    <div class="striphead"><span><b>${esc(layer.label)}</b>, ${items.length} item${items.length === 1 ? '' : 's'}, each sized by its tokens</span><span><b>${fmt(after)}</b> of ${fmt(before)} tokens sent</span></div>
+    <div class="strip">${items.map(it => {
+      const grow = Math.max(1, isOff(it) ? tok(it.chars) * 0.35 : tok(textOf(it).length))
+      const label = grow / Math.max(1, totalGrow) > 0.06 ? `<span>${esc(it.name)}</span>` : ''
+      return `<button data-id="${esc(it.id)}" class="${isOff(it) ? 'off' : isEdited(it) || it.added ? 'edited' : ''} ${S.sel[S.layer] === it.id ? 'sel' : ''}" style="flex-grow:${grow}" title="${esc(it.name)}, ${fmt(tok(it.chars))} tokens" aria-label="${esc(it.name)}">${label}</button>`
+    }).join('')}</div>
+    <div class="legend"><span>Sent as loaded</span><span class="l-edit">Rewritten or yours</span><span class="l-off">${layer.off === 'Strip' ? 'Stripped' : layer.off === 'Defer' ? 'Deferred' : 'Hidden'}</span></div>`
+  wrap.querySelectorAll('.strip button').forEach(b => b.onclick = () => select(b.dataset.id))
+}
+
+const drawRail = () => `
+  <nav class="rail" aria-label="Layers">
+    ${LAYERS.map(l => {
+      const items = itemsOf(l.key)
+      const off = items.filter(isOff).length
+      return `<button data-layer="${l.key}" aria-current="${S.layer === l.key}">${esc(l.label)}<small>${off ? `<em>${off}</em> / ` : ''}${items.length}</small></button>`
+    }).join('')}
+    <hr>
+    <button data-layer="preview" aria-current="${S.layer === 'preview'}">Preview<small></small></button>
+  </nav>`
+
+const visible = () => {
+  const q = S.q.trim().toLowerCase()
+  const items = itemsOf(S.layer).filter(it => (!q || it.name.toLowerCase().includes(q) || textOf(it).toLowerCase().includes(q)) && (!S.source || it.source === S.source))
+  return S.layer !== 'sections' && S.sort === 'size' ? items.sort((a, b) => b.chars - a.chars) : items
+}
+
+/** The largest loaded size in the current layer, in characters. */
+const layerMax = () => Math.max(1, ...itemsOf(S.layer).map(it => it.chars))
+
+const rowHtml = it => {
+  const edited = isEdited(it)
+  const meta = [it.scope && S.layer === 'sections' ? (it.scope === 'shared' ? 'shared cache' : 'per session') : '', it.added ? 'yours' : '', it.deferred ? 'deferred by default' : '', it.hidden ? 'hidden by default' : '', it.count > 1 ? `seen ${it.count}×` : '', isStale(it) ? 'not in the latest prompt' : '', S.layer !== 'sections' && it.source && it.source !== 'engine' ? it.source : ''].filter(Boolean).join(', ')
+  return `<div class="row ${isOff(it) ? 'off' : ''} ${S.sel[S.layer] === it.id ? 'sel' : ''} ${isStale(it) ? 'stale' : ''}" data-id="${esc(it.id)}" ${S.layer === 'sections' && !S.q ? 'draggable="true"' : ''}>
+    <button class="tick" role="checkbox" aria-checked="${!isOff(it) && !it.deferred}" aria-label="Send ${esc(it.name)}" data-tick="${esc(it.id)}" ${it.deferred ? 'disabled title="Deferred by the engine already"' : ''}></button>
+    <div style="min-width:0"><div class="name">${esc(it.name)}</div>${meta ? `<div class="meta">${esc(meta)}</div>` : ''}</div>
+    <div class="tok">${fmt(tok(it.chars))}${edited && !isOff(it) ? `<ins>${fmt(tok(textOf(it).length))}</ins>` : ''}<span class="size"><i style="width:${Math.max(4, Math.round((it.chars / layerMax()) * 100))}%"></i></span></div>
+  </div>`
+}
+
+const drawList = () => {
+  const layer = layerOf(S.layer)
+  const items = visible()
+  const sources = S.layer === 'tools' || S.layer === 'commands' ? [...new Set(itemsOf(S.layer).map(it => it.source).filter(Boolean))].sort() : []
+  let rows
+  if (!S.data || !Object.keys(S.data.items).length) {
+    rows = '<div class="empty"><b>Nothing recorded yet</b>Items show up here after a Claude Code session with prompt-strip loaded finishes its first turn. Send any message in a session, then come back.</div>'
+  } else if (!items.length) {
+    rows = `<div class="empty"><b>${S.q || S.source ? 'No matches' : 'None loaded yet'}</b>${S.q || S.source ? 'Clear the search to see every item.' : `No session has loaded any ${esc(layer.label.toLowerCase())} since prompt-strip was installed.`}</div>`
+  } else if (S.layer === 'sections') {
+    const shared = items.filter(it => it.scope === 'shared'), session = items.filter(it => it.scope !== 'shared')
+    rows = shared.map(rowHtml).join('') + (shared.length && session.length ? '<div class="boundary">cache boundary</div>' : '') + session.map(rowHtml).join('')
+  } else if (S.layer === 'tools' && !S.source) {
+    const groups = {}
+    for (const it of items) (groups[it.source || 'engine'] ??= []).push(it)
+    const names = Object.keys(groups).sort((a, b) => (a === 'engine' ? -1 : b === 'engine' ? 1 : a.localeCompare(b)))
+    rows = names.map(g => `<div class="group">${g === 'engine' ? 'Built in' : esc(g)} <span class="meta">${groups[g].length}</span></div>${groups[g].map(rowHtml).join('')}`).join('')
+  } else rows = items.map(rowHtml).join('')
+  return `
+  <section class="list" aria-label="${esc(layer.label)}">
+    <div class="listtools">
+      <input id="q" type="search" placeholder="Search" value="${esc(S.q)}" aria-label="Search">
+      ${sources.length ? `<select id="source" aria-label="Source"><option value="">All sources</option>${sources.map(s => `<option ${S.source === s ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>` : ''}
+      ${S.layer === 'sections' ? '<button class="btn" id="add">Add section</button>' : `<select id="sort" aria-label="Sort"><option value="name" ${S.sort !== 'size' ? 'selected' : ''}>A–Z</option><option value="size" ${S.sort === 'size' ? 'selected' : ''}>Largest</option></select>`}
+      ${items.length > 1 ? `<button class="btn" id="bulk" title="Apply to every item in this list">${items.every(isOff) ? 'Send all' : `${layer.off} all`}</button>` : ''}
+    </div>
+    <div class="hint">${esc(layer.hint)}</div>
+    <div class="rows" id="rows">${rows}</div>
+  </section>`
+}
+
+const drawInspector = () => {
+  const layer = layerOf(S.layer)
+  const it = itemsOf(S.layer).find(x => x.id === S.sel[S.layer])
+  if (!it) return `<section class="insp"><div class="empty"><b>Pick an item</b>Select something in the list or the strip above to read its text, rewrite it, or ${esc(layer.off.toLowerCase())} it.</div></section>`
+  const off = isOff(it), edited = isEdited(it), text = textOf(it)
+  const facts = [
+    `${fmt(tok(it.chars))} tokens as loaded`,
+    edited ? `${fmt(tok(text.length))} as rewritten` : '',
+    it.scope ? (it.scope === 'shared' ? 'Before the cache boundary' : 'After the cache boundary') : '',
+    it.source && it.source !== 'engine' ? `From ${it.source}` : '',
+    it.deferred ? 'Deferred by default' : '',
+  ].filter(Boolean)
+  const canMove = S.layer === 'sections'
+  const d = S.tab === 'diff' && !it.added ? diff(it.text, text) : null
+  return `
+  <section class="insp" aria-label="Inspector">
+    <div class="insphead">
+      <h2>${esc(it.name)}</h2>
+      <div class="facts">${facts.map(f => `<span>${esc(f)}</span>`).join('')}</div>
+      <div class="controls">
+        ${it.deferred ? '' : `<div class="seg" role="group" aria-label="Send or ${esc(layer.off.toLowerCase())}">
+          <button id="keep" aria-pressed="${!off}">Send</button>
+          <button id="strip" class="cutbtn" aria-pressed="${off}">${esc(layer.off)}</button>
+        </div>`}
+        ${edited ? '<button class="btn" id="reset">Reset to original</button>' : ''}
+        ${canMove ? '<button class="btn" id="up" aria-label="Move up">Move up</button><button class="btn" id="down" aria-label="Move down">Move down</button>' : ''}
+        ${it.added ? '<button class="btn" id="remove">Delete section</button>' : ''}
+      </div>
+    </div>
+    <div class="inspbody">
+      ${it.added ? '' : `<div class="tabs" role="tablist">
+        <button role="tab" id="t-edit" aria-selected="${S.tab !== 'diff'}">${layer.noEdit ? 'Text' : 'Text sent'}</button>
+        <button role="tab" id="t-diff" aria-selected="${S.tab === 'diff'}" ${edited ? '' : 'disabled'}>Changes${edited ? '' : ' (none)'}</button>
+      </div>`}
+      ${S.layer === 'reminders' ? '<p class="callout">This is the latest text seen for this reminder type. Its text can change from turn to turn; a rewrite replaces all of them with what you write here.</p>' : ''}
+      ${it.deferred ? '<p class="callout">The engine already keeps this tool behind ToolSearch, so its description is sent only when the model loads it. A rewrite applies then.</p>' : ''}
+      ${layer.noEdit ? '<p class="callout">Subagent descriptions can only be shown or hidden, not rewritten.</p>' : ''}
+      ${it.added ? '<p class="callout">Your section is sent after the cache boundary, at its place in the list.</p>' : ''}
+      ${d ? `<div class="diff">${d.map(([k, line]) => `<div class="${k}">${esc(line) || ' '}</div>`).join('')}</div>`
+        : S.tab === 'diff' && !it.added ? '<p class="callout">This text is too long to compare line by line.</p>'
+        : `<textarea class="text" id="text" spellcheck="false" ${layer.noEdit ? 'disabled' : ''} aria-label="Text">${esc(text)}</textarea>
+           <div class="textfoot"><span id="tcount">${fmt(tok(text.length))} tokens, ${text.length.toLocaleString()} characters</span><span>${off ? `${esc(layer.off === 'Defer' ? 'Deferred' : layer.off === 'Hide' ? 'Hidden' : 'Stripped')}: your text is kept for when you send it again.` : edited ? 'Rewritten.' : it.added ? '' : 'Edit to rewrite. Matching the original removes the rewrite.'}</span></div>`}
+    </div>
+  </section>`
+}
+
+/** The final system prompt and first message as your rules send them, with what was stripped. */
+const drawPreview = () => {
+  const latest = S.data?.compose
+  const sections = itemsOf('sections').filter(it => !isStale(it) && (it.added || latest?.ids.includes(it.name)))
+  const context = itemsOf('context')
+  const block = it => isOff(it)
+    ? `<div class="gut"><b>${esc(it.name)}</b>${fmt(tok(it.chars))}</div><div class="gone">Stripped, ${fmt(tok(it.chars))} tokens not sent</div>`
+    : `<div class="gut"><b>${esc(it.name)}</b>${fmt(tok(textOf(it).length))}${isEdited(it) ? ', rewritten' : it.added ? ', yours' : ''}</div><pre class="preview ${isEdited(it) || it.added ? 'edited' : ''}">${esc(textOf(it))}</pre>`
+  const shared = sections.filter(s => s.scope === 'shared'), rest = sections.filter(s => s.scope !== 'shared')
+  return `
+  <section class="previewwrap" aria-label="Preview">
+    <h2>What the model receives</h2>
+    ${S.draft.paused ? '<p class="callout">Rules are paused, so sessions send everything as loaded. This preview shows what your rules send once you turn them back on.</p>' : ''}
+    <p class="note">${latest ? `The system prompt last rendered for ${esc(latest.model)}, with your unsaved changes applied.` : 'No system prompt recorded yet.'} <button class="btn" id="copy" style="margin-left:8px">Copy system prompt</button></p>
+    <div class="pv">${shared.map(block).join('')}${shared.length && rest.length ? '<div class="bound boundary">cache boundary</div>' : ''}${rest.map(block).join('')}</div>
+    ${context.length ? `<h2 style="margin-top:34px">First message context</h2><div class="pv">${context.map(block).join('')}</div>` : ''}
+  </section>`
+}
+
+const draw = () => {
+  if (!S.draft) return
+  if (S.layer !== 'preview' && !itemsOf(S.layer).some(x => x.id === S.sel[S.layer])) S.sel[S.layer] = visible()[0]?.id
+  drawHeader()
+  drawStrip()
+  const main = $('main')
+  const focusQ = document.activeElement?.id === 'q'
+  const scroll = $('rows')?.scrollTop ?? 0
+  main.innerHTML = drawRail() + (S.layer === 'preview' ? drawPreview() : drawList() + drawInspector())
+  if ($('rows')) $('rows').scrollTop = scroll
+  if (focusQ) { const q = $('q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length) }
+  bind()
+}
+
+/** Redraws everything but the inspector, so the text box keeps its focus and cursor. */
+const drawLight = () => {
+  drawHeader(); drawStrip()
+  const rail = document.querySelector('.rail'); if (rail) { rail.outerHTML = drawRail(); bindRail() }
+  const it = itemsOf(S.layer).find(x => x.id === S.sel[S.layer])
+  const row = it && document.querySelector(`.row[data-id="${CSS.escape(it.id)}"]`)
+  if (row) { row.outerHTML = rowHtml(it); bindRows() }
+  if (it && $('tcount')) $('tcount').textContent = `${fmt(tok(textOf(it).length))} tokens, ${textOf(it).length.toLocaleString()} characters`
+}
+
+const select = id => { S.sel[S.layer] = id; S.tab = 'edit'; remember(); draw() }
+
+const move = (it, by) => {
+  const list = itemsOf('sections')
+  const side = list.filter(x => (x.scope === 'shared') === (it.scope === 'shared'))
+  const i = side.findIndex(x => x.id === it.id), j = i + by
+  if (j < 0 || j >= side.length) return
+  ;[side[i], side[j]] = [side[j], side[i]]
+  const shared = it.scope === 'shared' ? side : list.filter(x => x.scope === 'shared')
+  const session = it.scope === 'shared' ? list.filter(x => x.scope !== 'shared') : side
+  S.draft.order = [...shared, ...session].map(x => x.name)
+  draw()
+}
+
+const bindRail = () => document.querySelectorAll('.rail button').forEach(b => b.onclick = () => { S.layer = b.dataset.layer; S.q = ''; S.source = ''; S.tab = 'edit'; remember(); draw() })
+
+const bindRows = () => {
+  document.querySelectorAll('.row').forEach(r => {
+    r.onclick = e => { if (!e.target.closest('.tick')) select(r.dataset.id) }
+    r.ondragstart = e => { e.dataTransfer.setData('text/plain', r.dataset.id); e.dataTransfer.effectAllowed = 'move' }
+    r.ondragover = e => { e.preventDefault(); r.classList.add('drag-over') }
+    r.ondragleave = () => r.classList.remove('drag-over')
+    r.ondrop = e => {
+      e.preventDefault()
+      const from = e.dataTransfer.getData('text/plain'), to = r.dataset.id
+      const list = itemsOf('sections'), a = list.find(x => x.id === from), b = list.find(x => x.id === to)
+      if (!a || !b || a === b) return draw()
+      if ((a.scope === 'shared') !== (b.scope === 'shared')) { S.note = 'Sections cannot cross the cache boundary.'; return draw() }
+      const ids = list.filter(x => x !== a)
+      ids.splice(ids.indexOf(b), 0, a)
+      S.draft.order = ids.map(x => x.name)
+      draw()
+    }
+  })
+  document.querySelectorAll('[data-tick]').forEach(t => t.onclick = () => {
+    const it = itemsOf(S.layer).find(x => x.id === t.dataset.tick)
+    setOff(it, !isOff(it)); draw()
+  })
+}
+
+const bind = () => {
+  bindRail(); bindRows()
+  const it = itemsOf(S.layer).find(x => x.id === S.sel[S.layer])
+  const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn }
+  if ($('q')) $('q').oninput = e => { S.q = e.target.value; draw() }
+  if ($('source')) $('source').onchange = e => { S.source = e.target.value; draw() }
+  if ($('sort')) $('sort').onchange = e => { S.sort = e.target.value; remember(); draw() }
+  on('bulk', () => { const items = visible().filter(x => !x.deferred), off = !items.every(isOff); items.forEach(x => setOff(x, off)); draw() })
+  on('add', () => {
+    let n = 1; while (S.draft.added.some(a => a.id === `section-${n}`)) n++
+    const id = prompt('Name your section (lowercase letters, digits and dashes):', `section-${n}`)
+    if (!id) return
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(id) || S.draft.added.some(a => a.id === id)) { S.note = 'Use a new name of lowercase letters, digits and dashes.'; return draw() }
+    S.draft.added.push({ id, text: '' })
+    S.sel.sections = `add:${id}`
+    draw(); $('text')?.focus()
+  })
+  if (!it) return
+  on('keep', () => { setOff(it, false); draw() })
+  on('strip', () => { setOff(it, true); draw() })
+  on('reset', () => { setText(it, it.text); S.tab = 'edit'; draw() })
+  on('up', () => move(it, -1))
+  on('down', () => move(it, 1))
+  on('remove', () => { S.draft.added = S.draft.added.filter(a => a !== it.added); S.draft.order = S.draft.order?.filter(n => n !== it.name) ?? null; S.sel.sections = undefined; draw() })
+  on('t-edit', () => { S.tab = 'edit'; draw() })
+  on('t-diff', () => { S.tab = 'diff'; draw() })
+  if ($('text')) $('text').oninput = e => { setText(it, e.target.value); drawLight() }
+}
+
+/* Data */
+const load = async () => {
+  try {
+    const r = await fetch('/api/state')
+    if (!r.ok) throw new Error(`${r.status}`)
+    const data = await r.json()
+    S.isDown = false
+    S.data = data
+    if (!isDirty()) { S.saved = clone(data.rules); S.draft = clone(data.rules) }
+    if (document.activeElement?.id === 'text') drawLight(); else draw()
+  } catch {
+    S.isDown = true
+    if (S.draft) drawHeader(); else $('summary').textContent = 'The dashboard server is not answering. Run /prompt-strip in Claude Code to start it again.'
+  }
+}
+const post = async (doc, done) => {
+  try {
+    const r = await fetch('/api/rules', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(doc) })
+    const body = await r.json()
+    if (!r.ok) throw new Error(body.error || `${r.status}`)
+    S.data = body; S.saved = clone(body.rules); S.draft = clone(body.rules); S.note = done
+  } catch (e) { S.note = `Not saved: ${e.message}` }
+  draw()
+}
+const save = () => isDirty() && post(S.draft, 'Saved. Applies from the next turn.')
+
+$('save').onclick = save
+$('discard').onclick = () => { S.draft = clone(S.saved); S.note = 'Changes discarded.'; draw() }
+$('undo').onclick = () => post({ undo: true }, 'Last save undone. Applies from the next turn.')
+$('paused').onclick = async () => {
+  if (!S.saved) return
+  const draft = S.draft, wasDirty = isDirty(), paused = !S.saved.paused
+  $('paused').disabled = true
+  await post({ ...S.saved, paused }, paused ? 'Rules paused. Sessions send everything as loaded from the next turn.' : 'Rules active again from the next turn.')
+  $('paused').disabled = false
+  if (wasDirty && S.saved.paused === paused) { S.draft = { ...draft, paused }; draw() }
+}
+$('main').addEventListener('click', e => { if (e.target.id === 'copy') navigator.clipboard?.writeText([...document.querySelectorAll('.previewwrap .pv:first-of-type pre')].map(p => p.textContent).join('\n\n')).then(() => { S.note = 'System prompt copied.'; drawHeader() }) })
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); save() }
+  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !/^(TEXTAREA|INPUT|SELECT)$/.test(document.activeElement?.tagName)) {
+    const items = visible(); if (!items.length) return
+    e.preventDefault()
+    const i = items.findIndex(x => x.id === S.sel[S.layer])
+    const it = items[Math.max(0, Math.min(items.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))]
+    if (e.altKey && S.layer === 'sections' && i >= 0) return move(items[i], e.key === 'ArrowDown' ? 1 : -1)
+    select(it.id)
+    document.querySelector(`.row[data-id="${CSS.escape(it.id)}"]`)?.scrollIntoView({ block: 'nearest' })
+  }
+})
+window.addEventListener('beforeunload', e => { if (isDirty()) e.preventDefault() })
+load()
+setInterval(() => { if (!document.hidden) load() }, 5000)
+</script>
+</body>
+</html>

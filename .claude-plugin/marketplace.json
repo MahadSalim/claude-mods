@@ -1,12 +1,8 @@
 {
   "name": "claude-mods",
-  "description": "Mods for Claude Code: a usage log, a session rail, and Changes, Files and Browser panes.",
+  "description": "Mods for Claude Code: Settings Manager, one window that turns skills, prompts, plugins, hooks and settings on or off.",
   "owner": { "name": "MahadSalim" },
   "plugins": [
-    { "name": "usage-log", "source": "./usage-log" },
-    { "name": "session-rail", "source": "./session-rail" },
-    { "name": "changes-pane", "source": "./changes-pane" },
-    { "name": "files-pane", "source": "./files-pane" },
-    { "name": "browser-pane", "source": "./browser-pane" }
+    { "name": "settings-manager", "source": "./settings-manager" }
   ]
 }

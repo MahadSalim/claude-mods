@@ -25,7 +25,7 @@ html, body, body * { scrollbar-width: none; }
 ::-webkit-scrollbar { display: none; }
 * { box-sizing: border-box; }
 body { margin: 0; height: 100vh; min-width: 1200px; display: grid; grid-template-rows: 56px minmax(0, 1fr); background: var(--page); color: var(--ink); font: 13px/1.4 Geist, "Segoe UI", system-ui, sans-serif; }
-button, input, textarea { font: inherit; }
+button, input { font: inherit; }
 [hidden] { display: none !important; }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
@@ -93,7 +93,6 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows:
 .modal { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; }
 .scrim { position: absolute; inset: 0; border: 0; padding: 0; background: var(--shade); cursor: default; animation: fade .2s both; }
 .dialog { position: relative; max-width: calc(100% - 48px); padding: 6px 0 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 30px 80px var(--shade); animation: dialog .28s cubic-bezier(.2,.8,.2,1) both; }
-.off { opacity: .35; pointer-events: none; }
 .strip { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1px; background: var(--grid); }
 .kpi { color: inherit; text-align: left; background: var(--surface); border: 0; padding: 0 20px; display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; transition: background .2s; }
 .kpi .row { white-space: nowrap; gap: 8px; }
@@ -104,7 +103,6 @@ button.kpi:hover { background: var(--raised); }
 .slot { display: block; height: 10px; position: relative; }
 .slot i { display: block; height: 100%; min-width: 2px; border-radius: 0 5px 5px 0; background: var(--plan); }
 .slot.thin { height: 8px; }
-.slot.twin i { position: absolute; inset: 0 auto 0 0; transition: width .3s; }
 .stack { display: flex; gap: 2px; height: 10px; }
 .stack i { border-radius: 0; min-width: 0; }
 .stack i:last-child { border-radius: 0 5px 5px 0; }
@@ -135,22 +133,11 @@ button.kpi:hover { background: var(--raised); }
 .more:hover { color: var(--ink); background: var(--wash); }
 .step { color: var(--ink2); background: var(--wash); border: 0; border-radius: 8px; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; flex: none; cursor: pointer; transition: background .2s, color .2s; }
 .step:hover { background: var(--raised); color: var(--ink); }
-.go { font-weight: 500; color: var(--page); background: var(--ink); border: 0; border-radius: 9px; height: 34px; padding: 0 14px; cursor: pointer; transition: opacity .2s; }
-.go:hover { opacity: .86; }
-.tog { flex: none; position: relative; width: 36px; height: 20px; padding: 0; border: 0; border-radius: 10px; background: var(--axis); cursor: pointer; transition: background .2s; }
-.tog::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--ink); transition: transform .2s; }
-.tog[aria-checked=true] { background: var(--good); }
-.tog[aria-checked=true]::after { transform: translateX(16px); background: #fff; }
-.set { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 24px; border-top: 1px solid var(--grid); }
-.txt { font-size: 12px; margin: 0; width: 100%; height: 340px; overflow: auto; white-space: pre-wrap; padding: 12px 14px; border: 0; border-radius: 10px; background: var(--wash); color: var(--ink2); line-height: 1.55; resize: none; outline: 0; }
-textarea.txt { color: var(--ink); box-shadow: inset 0 0 0 1px var(--axis); }
-textarea.txt:focus { box-shadow: inset 0 0 0 1.5px var(--ink2); }
 .search { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; background: var(--wash); border-radius: 10px; color: var(--muted); }
 .search input { flex: 1; min-width: 0; color: var(--ink); background: transparent; border: 0; outline: 0; }
 .tr { display: grid; align-items: center; gap: 12px; padding: 0 24px; min-height: 38px; font-variant-numeric: tabular-nums; transition: background .2s, opacity .3s; }
 .tr > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tr.th { color: var(--muted); font-size: 12px; min-height: 28px; }
-.tr.top { border-top: 1px solid var(--grid); min-height: 40px; }
 button.tr { color: inherit; text-align: left; width: 100%; background: transparent; border: 0; cursor: pointer; }
 button.tr:hover, button.tr[aria-pressed=true] { background: var(--wash); }
 .link { display: flex; align-items: center; gap: 8px; color: inherit; text-align: left; background: transparent; border: 0; padding: 4px 8px; margin: 0 -8px; border-radius: 8px; cursor: pointer; transition: background .2s; }
@@ -158,7 +145,6 @@ button.tr:hover, button.tr[aria-pressed=true] { background: var(--wash); }
 .pair { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 12px; margin: 0; padding: 7px 8px; flex: none; }
 .pair .sub:last-child { grid-column: 1 / -1; }
 .line { border-top: 1px solid var(--grid); padding-top: 16px; }
-.foot { padding: 10px 24px 14px; border-top: 1px solid var(--grid); }
 svg text { font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
 svg text.v { fill: var(--ink); font-weight: 500; font-size: 12px; }
 .g { stroke: var(--grid); }
@@ -189,24 +175,21 @@ svg text.v { fill: var(--ink); font-weight: 500; font-size: 12px; }
 <div id="tip" hidden></div>
 <script>
 const NS = 'http://www.w3.org/2000/svg', DAY = 864e5;
-// Tokens a deferred tool keeps in every request
-const DEFERRED = 15;
 const KEYS = ['requests', 'input', 'output', 'cacheWrite', 'cacheRead', 'cost', 'cIn', 'cOut', 'cRead', 'cWrite', 'saved', 'p5', 'p7', 'wk'];
 // Model families: id fragment, name, colour
 const FAMILIES = [['fable', 'Fable', 'var(--m1)'], ['opus', 'Opus', 'var(--m2)'], ['sonnet', 'Sonnet', 'var(--m3)'], ['haiku', 'Haiku', 'var(--m4)'], ['', 'Other', 'var(--muted)']];
-const TABS = [['overview', 'Overview'], ['sessions', 'Sessions'], ['tools', 'Tools'], ['breakdown', 'Breakdown'], ['context', 'Context']];
+const TABS = [['overview', 'Overview'], ['sessions', 'Sessions'], ['tools', 'Tools'], ['breakdown', 'Breakdown']];
 const TYPES = [['Input', 'input', 'cIn'], ['Output', 'output', 'cOut'], ['Cache read', 'cacheRead', 'cRead'], ['Cache write', 'cacheWrite', 'cWrite']];
-const KINDS = { tools: 'Tools', skills: 'Skills', blocks: 'Injected blocks', sections: 'System prompt', files: 'File reads' };
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 // Icon outlines, 24 by 24, paths split by |
 const ICON = {
-  down: 'M6 9l6 6 6-6', up: 'M6 15l6-6 6 6', prev: 'M15 5l-7 7 7 7', next: 'M9 5l7 7-7 7', check: 'M5 12.5l4.5 4.5L19 7.5', close: 'M6 6l12 12|M18 6L6 18',
-  minus: 'M5 12h14', plus: 'M5 12h14|M12 5v14', reset: 'M4 9h10a5 5 0 0 1 0 10H9|M8 5L4 9l4 4', refresh: 'M20 12a8 8 0 1 1-2.3-5.7|M20 4v5h-5', search: 'M4 11a7 7 0 1 0 14 0a7 7 0 1 0-14 0|M20 20l-3.5-3.5',
+  down: 'M6 9l6 6 6-6', prev: 'M15 5l-7 7 7 7', next: 'M9 5l7 7-7 7', check: 'M5 12.5l4.5 4.5L19 7.5', close: 'M6 6l12 12|M18 6L6 18',
+  refresh: 'M20 12a8 8 0 1 1-2.3-5.7|M20 4v5h-5', search: 'M4 11a7 7 0 1 0 14 0a7 7 0 1 0-14 0|M20 20l-3.5-3.5',
 };
-const state = { range: 30, project: '', menu: false, q: '', sort: 'recent', by: 'project', metric: 'tokens', tsort: 'calls', tool: '', extra: 'fails', side: 'tools', kind: 'tools', cf: 'all', openG: { 'Built-in': true } };
+const state = { range: 30, project: '', menu: false, q: '', sort: 'recent', by: 'project', metric: 'tokens', tsort: 'calls', tool: '', extra: 'fails', side: 'tools' };
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-// The usage data, the open session and the context catalog with its draft rules
-let data, cur, cx;
+// The usage data and the open session
+let data, cur;
 
 // HTML element builder; string children become text nodes
 const h = (tag, a = {}, ...kids) => {
@@ -239,7 +222,6 @@ const guard = f => (n, ...r) => Number.isFinite(n) ? f(n, ...r) : '–';
 const fmt = {
   int: guard(n => Math.round(n).toLocaleString('en-US')),
   num: guard(n => n >= 1e9 ? (n / 1e9).toFixed(2) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'K' : String(Math.round(n))),
-  kt: guard(n => n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(Math.round(n))),
   usd: guard(n => (n < 0 ? '−$' : '$') + Math.abs(n).toFixed(2)),
   usd0: guard(n => '$' + Math.round(n).toLocaleString('en-US')),
   pct: guard(n => n.toFixed(1) + '%'),
@@ -315,9 +297,9 @@ const spark = s => {
   return chart('76 32', '', `<path d="M${b.map((v, i) => `${(2 + i / Math.max(1, b.length - 1) * 72).toFixed(1)},${(29 - (v - lo) / span * 26).toFixed(1)}`).join('L')}" fill="none" stroke="var(--plan)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>`, { width: 76, height: 32, class: 'sp' });
 };
 // Strip of six totals: label, value, formatter, change, note, daily series, tab it opens
-const strip = (label, list, quiet) => h('section', { className: 'panel strip', 'aria-label': label }, list.map(([name, v, f, change, note, series, to]) => {
+const strip = (label, list) => h('section', { className: 'panel strip', 'aria-label': label }, list.map(([name, v, f, change, note, series, to]) => {
   const big = h('span', { className: 'big' });
-  quiet ? big.textContent = f(v) : countUp(big, v, f);
+  countUp(big, v, f);
   return h(to ? 'button' : 'div', { className: 'kpi', type: to && 'button', onclick: to && (() => go(to)) }, h('span', { className: 'row' }, h('span', { className: 'sub' }, name), h('span', { className: 'sub tn' }, change)), h('span', { className: 'row', style: 'align-items:flex-end' }, big, series?.length > 1 && spark(series)), h('span', { className: 'sub tn el' }, note));
 }));
 // One row of a bar list: name, bar and value
@@ -373,16 +355,16 @@ function columns(label, [x0, x1, yt, yb, vw, vh], days, stacks, fy, { ticks = 4,
 
 // Header: tabs, stamp, date range, project menu and refresh
 function header() {
-  const isCx = state.view === 'context', busy = document.body.classList.contains('busy'), sessions = data?.sessions || [];
+  const busy = document.body.classList.contains('busy'), sessions = data?.sessions || [];
   const projects = rollup(sessions.flatMap(s => s.usage.map(b => ({ ...b, project: s.project }))), b => b.project).sort((a, b) => b.tokens - a.tokens);
   const pick = p => { state.project = p; render(); };
   $('head').replaceChildren(
     h('div', { className: 'brand' }, chart('20 20', '', '<rect width="20" height="20" rx="6" fill="var(--ink)"/><path d="M5.5 14V9.5M10 14V5.5M14.5 14V8" stroke="var(--page)" stroke-width="2" stroke-linecap="round"/>', { width: 20, height: 20 }), 'Usage'),
     h('nav', { 'aria-label': 'Views' }, TABS.map(([id, label]) => h('button', { type: 'button', className: 'tab', 'aria-pressed': String(id === state.view), onclick: () => go(id) }, label))),
     h('div', { className: 'tools' },
-      h('span', { className: 'sub tn', style: 'margin-right:4px' }, busy ? 'Reading the log' : !data ? '' : isCx ? cx?.d.items.length ? `Items from ${cx.d.sessions} loaded sessions` : 'No session loaded yet' : 'Read ' + fmt.clock(data.generatedAt)),
-      !isCx && seg('Date range', [[7, '7d'], [30, '30d'], [90, '90d'], [0, 'All']], state.range, v => { state.range = v; render(); }),
-      !isCx && h('div', { style: 'position:relative' },
+      h('span', { className: 'sub tn', style: 'margin-right:4px' }, busy ? 'Reading the log' : !data ? '' : 'Read ' + fmt.clock(data.generatedAt)),
+      seg('Date range', [[7, '7d'], [30, '30d'], [90, '90d'], [0, 'All']], state.range, v => { state.range = v; render(); }),
+      h('div', { style: 'position:relative' },
         h('button', { type: 'button', className: 'ctl', 'aria-haspopup': 'listbox', 'aria-expanded': String(state.menu), style: 'justify-content:space-between;min-width:140px', onclick: () => { state.menu = !state.menu; header(); } }, state.project || 'All projects', icon(ICON.down, 12, 'chev' + (state.menu ? ' open' : ''))),
         state.menu && [h('button', { type: 'button', className: 'veil', 'aria-label': 'Close menu', onclick: () => { state.menu = false; header(); } }),
           h('div', { role: 'listbox', 'aria-label': 'Project', className: 'menu' }, [{ name: '', tokens: sum(projects, p => p.tokens) }, ...projects].map(p => h('button', { type: 'button', role: 'option', className: 'opt', 'aria-selected': String(p.name === state.project), onclick: () => pick(p.name) }, icon(ICON.check, 14), h('span', { className: 'el' }, p.name || 'All projects'), h('span', { className: 'sub tn' }, fmt.num(p.tokens)))))]),
@@ -588,12 +570,6 @@ function toolsView(sc) {
       h('div', { className: 'fill scroll col', style: 'padding:0 16px 10px' }, list.map(([head, val, note, pick], i) => h('button', { type: 'button', className: 'link pair gup', style: `cursor:${pick ? 'pointer' : 'default'};animation-delay:${Math.min(i, 14) * 40}ms`, onclick: pick }, h('span', { className: 'mono el', style: 'color:var(--ink)' }, head), h('span', { className: 'sub tn' }, val), h('span', { className: 'sub el' }, note))),
         !list.length && h('span', { className: 'sub', style: 'padding:8px' }, kind === 'fails' ? 'No recent failure for this tool.' : kind === 'skills' ? 'No skill or command ran in this range.' : 'No settings hook run is logged in this range.'))];
   });
-  const servers = live(panel('grid-column:span 4;animation-delay:.21s', ''), () => {
-    const schema = o => sum((cx?.d.items || []).filter(it => it.name.startsWith(`mcp__${o.server}__`)), it => it.tok), total = sum(mcp, schema);
-    return [h('div', { className: 'ph' }, title('MCP servers'), h('span', { className: 'sub tn' }, total ? `${fmt.kt(total)} schema tokens when loaded` : '')),
-      table('minmax(0,1fr) 40px 50px 52px 92px', 'mrrrr', ['Server', 'Tools', 'Calls', 'Failed', 'Schema tokens'], mcp.map(o => ({ cells: [o.server, o.kinds.size, fmt.int(o.calls), fmt.pct(div(o.errors, o.calls) * 100), schema(o) ? fmt.kt(schema(o)) : '–'] })), 'No MCP tool was called in this range.')];
-  });
-  if (!cx) loadCx().then(servers.redraw, () => {});
   return h('div', { className: 'grid12', style: 'grid-template-rows:108px 336px minmax(300px,1fr)' },
     strip('Tool totals', [
       ['Tool calls', calls, fmt.int, '', `${div(calls, sum(sc.sessions, x => x.s.prompts)).toFixed(1)} per prompt`],
@@ -612,7 +588,8 @@ function toolsView(sc) {
     panel('grid-column:span 4;animation-delay:.14s', 'pad', h('div', { className: 'row', style: 'align-items:baseline' }, title('Calls each day'), h('span', { className: 'sub tn' }, `${fmt.int(sc.act.calls / sc.days.length)} a day`)),
       h('div', { className: 'fill', style: 'margin-top:8px' }, columns('Tool calls each day', [34, 400, 12, 206, 400, 236], sc.days, [{ color: 'var(--plan)', values: sc.D.map(o => o.calls) }], fmt.int, { ticks: 2, cap: 16 })),
       h('div', { className: 'sub tn' }, peak.calls ? `Peak ${fmt.int(peak.calls)} on ${fmt.long(peak.day)}` : 'Nothing in this range.')),
-    servers,
+    panel('grid-column:span 4;animation-delay:.21s', '', h('div', { className: 'ph' }, title('MCP servers')),
+      table('minmax(0,1fr) 40px 50px 52px', 'mrrr', ['Server', 'Tools', 'Calls', 'Failed'], mcp.map(o => ({ cells: [o.server, o.kinds.size, fmt.int(o.calls), fmt.pct(div(o.errors, o.calls) * 100)] })), 'No MCP tool was called in this range.')),
     panel('grid-column:span 4;animation-delay:.28s', '', h('div', { className: 'ph' }, title('Subagent types'), h('span', { className: 'sub' }, `${fmt.pct(div(sum(sc.buckets.filter(b => b.sub), tok), sc.t.tokens) * 100)} of tokens`)),
       table('minmax(0,1fr) 44px 66px 64px 72px', 'lrrrr', ['Type', 'Runs', 'Avg time', 'Avg tools', 'Tokens'], types.map(a => ({ cells: [h('b', {}, a.name), a.n, fmt.dur(sum(a.rs, r => r.end - r.start) / a.n), (sum(a.rs, r => r.toolCalls) / a.n).toFixed(1), fmt.num(a.tokens)] })), 'No subagent ran in this range.')),
     extra);
@@ -646,114 +623,7 @@ function breakdown(sc) {
       h('button', { type: 'button', className: 'ctl wide', onclick: prices }, 'Open price table')));
 }
 
-// Reads what sessions loaded and the applied rules; the draft starts as a copy of them
-async function loadCx() {
-  const d = await get('/api/context');
-  cx = { d, rules: { ...d.rules }, order: d.order && [...d.order], cap: { ...d.cap }, note: '' };
-}
-// What each kind's header and footer say
-const ABOUT = {
-  tools: [' · in every request', 'Defer keeps a tool’s name in context and loads its description when Claude asks for it.'],
-  skills: [' · the listing is in every request, a skill loads when invoked', 'The listing is one block, so a single skill cannot be removed from it. Rewrite the listing to leave skills out.'],
-  blocks: [' · each time the engine injects one', 'A rule covers every block of its type. Dropping a block can remove a reminder Claude relies on.'],
-  sections: [' · in every request, in this order', 'Dropping or rewriting a section can change how Claude behaves. Shared sections stay ahead of session ones. Every change can be reset.'],
-};
-// Context: what sessions load, a draft of rules on it, and the changes waiting to be applied
-function contextView() {
-  const root = h('div', { className: 'panes', style: 'grid-template-columns:224px minmax(0,1fr) 324px;grid-template-rows:108px minmax(0,1fr)' }), cols = 'minmax(0,1fr) 96px 52px 180px 52px 26px';
-  const draw = () => {
-    const { d, rules: R, cap } = cx, A = d.rules, items = d.items, kind = state.kind, inK = items.filter(o => o.kind === kind), kMax = Math.max(1, ...inK.map(o => o.tok));
-    const base = o => o.kind === 'tools' && o.deferred ? DEFERRED : o.tok, fixed = o => o.kind === 'tools' || o.kind === 'sections' || o.id === 'k:listing';
-    const costOf = (o, r) => !r || base(o) === DEFERRED ? base(o) : r.a === 'defer' ? DEFERRED : r.a === 'drop' ? 0 : Math.max(1, Math.round(o.tok * (r.text ?? '').length / Math.max(1, o.text.length)));
-    const sig = r => r ? r.a + (r.text ?? '') : '', same = (a, b) => JSON.stringify(a) === JSON.stringify(b), group = o => /^mcp__(.+?)__/.exec(o.name)?.[1] || 'Built-in';
-    const touch = f => { f(); cx.note = ''; draw(); }, set = patch => touch(() => { for (const [id, r] of Object.entries(patch)) r ? R[id] = r : delete R[id]; }), setCap = patch => touch(() => Object.assign(cap, patch));
-    const sects = items.filter(o => o.kind === 'sections').sort((a, b) => a.pos - b.pos), rank = o => { const i = cx.order.indexOf(o.name); return i < 0 ? sects.length + o.pos : i; }, ord = cx.order ? [...sects].sort((a, b) => rank(a) - rank(b)) : sects;
-    const move = (j, by) => touch(() => { const a = ord.map(o => o.name), k = j + by; if (k < 0 || k >= a.length) return; [a[j], a[k]] = [a[k], a[j]]; cx.order = same(a, sects.map(o => o.name)) ? null : a; });
-    const capS = c => c.on ? `${c.k}K${c.part ? ', partial reads allowed' : ''}` : 'Off', LABEL = { defer: 'Deferred', rewrite: 'Rewritten', drop: 'Dropped' };
-    const chg = [...items.filter(o => R[o.id] || A[o.id]).map(o => ({ name: o.name, what: R[o.id] ? LABEL[R[o.id].a] : 'Back to default', isLive: sig(R[o.id]) === sig(A[o.id]), cost: `${fmt.kt(base(o))} → ${fmt.kt(costOf(o, R[o.id]))}`, reset: R[o.id] && (() => set({ [o.id]: null })) })),
-      ...(cx.order || d.order ? [{ name: 'Section order', what: cx.order ? 'Reordered' : 'Back to default', isLive: same(cx.order, d.order), reset: cx.order && (() => touch(() => cx.order = null)) }] : []),
-      ...(cap.on || d.cap.on ? [{ name: 'File read cap', what: capS(cap), isLive: capS(cap) === capS(d.cap), reset: cap.on && (() => setCap({ on: false })) }] : [])];
-    const pending = chg.filter(c => !c.isLive).length, changed = chg.filter(c => c.reset).length, fixedOf = rules => sum(items.filter(fixed), o => costOf(o, rules[o.id])), now = fixedOf({}), draft = fixedOf(R);
-    const send = (body, note) => fetch('/api/rules', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.ok ? loadCx() : Promise.reject(new Error(`/api/rules returned ${r.status}`))).then(() => { cx.note = note; }, e => { cx.note = e.message; }).then(draw);
-    const edit = o => {
-      const area = h('textarea', { id: 'cx-edit', className: 'mono txt', value: R[o.id]?.text ?? o.text }), est = h('span', { className: 'sub tn' }), keep = r => { closeLayer(); set({ [o.id]: r }); };
-      const size = () => { const v = Math.max(1, Math.round(o.tok * area.value.length / Math.max(1, o.text.length))); est.textContent = `about ${fmt.kt(v)} tokens · ${v > o.tok ? 'adds ' + fmt.kt(v - o.tok) : 'saves ' + fmt.kt(o.tok - v)}`; };
-      area.spellcheck = false;
-      area.oninput = size;
-      size();
-      dialog('Rewrite text', 980,
-        h('div', { className: 'ph', style: 'padding-top:16px' }, h('div', { className: 'col' }, h('span', { className: 'mono', style: 'font-size:14px;font-weight:500;color:var(--ink)' }, o.name), h('span', { className: 'sub' }, `${KINDS[o.kind]} · ${fixed(o) ? 'in every request' : o.kind === 'skills' ? 'loaded when invoked' : 'each time it is injected'}${o.chars > o.text.length ? ` · the first ${fmt.num(o.text.length)} of ${fmt.num(o.chars)} characters` : ''}`)), closer()),
-        h('div', { style: 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:8px 24px 0' },
-          h('div', { className: 'col', style: 'gap:8px' }, h('div', { className: 'row', style: 'align-items:baseline' }, h('span', { className: 'h' }, 'Original'), h('span', { className: 'sub tn' }, fmt.kt(o.tok) + ' tokens')), h('pre', { className: 'mono txt' }, o.text)),
-          h('div', { className: 'col', style: 'gap:8px' }, h('div', { className: 'row', style: 'align-items:baseline' }, h('label', { className: 'h', htmlFor: 'cx-edit' }, 'Rewrite'), est), area)),
-        h('div', { className: 'row', style: 'gap:8px;padding:14px 24px 0' }, h('span', { className: 'sub', style: 'margin-right:auto;max-width:520px' }, 'Claude reads only the rewrite. If it leaves out how something works, Claude may stop using it correctly. Reset brings the original back.'),
-          h('button', { type: 'button', className: 'ctl', style: 'height:34px;padding:0 14px', onclick: () => keep(null) }, 'Reset to default'), h('button', { type: 'button', className: 'go', onclick: () => keep(area.value.trim() && area.value.trim() !== o.text.trim() ? { a: 'rewrite', text: area.value } : null) }, 'Keep rewrite')));
-    };
-    const visible = o => state.cf === 'all' || R[o.id] || A[o.id];
-    const row = (o, j) => {
-      const r = R[o.id], a = r ? r.a : 'asis', mark = r || A[o.id], sec = o.kind === 'sections', after = costOf(o, r);
-      const note = o.kind === 'tools' ? o.deferred && 'deferred' : o.id === 'k:listing' ? 'in every request' : o.kind === 'skills' ? 'when invoked' : sec ? o.scope : `seen ${fmt.int(o.seen)} times`;
-      return h('div', { className: 'tr gup', style: `grid-template-columns:${cols};min-height:36px;animation-delay:${Math.min(j, 14) * 25}ms` },
-        h('button', { type: 'button', className: 'link', style: `opacity:${a === 'drop' ? .5 : 1}`, onclick: () => edit(o) }, h('i', { className: 'dot', style: `width:7px;height:7px;background:${mark && sig(r) === sig(A[o.id]) ? 'var(--plan)' : 'transparent'};box-shadow:inset 0 0 0 1.5px ${mark ? 'var(--plan)' : 'transparent'}` }), h('span', { className: 'mono el', style: `color:var(--ink);text-decoration:${a === 'drop' ? 'line-through' : 'none'}` }, o.name.replace(/^mcp__.+?__/, '')), h('span', { className: 'sub el' }, note)),
-        sec ? h('span', { className: 'key', style: 'gap:4px' }, step('Move up', ICON.up, () => move(j, -1)), step('Move down', ICON.down, () => move(j, 1)), h('span', { className: 'sub tn', style: 'margin-left:4px' }, `${j + 1} of ${sects.length}`))
-          : h('span', { className: 'slot thin twin' }, h('i', { style: `width:${wide(o.tok, kMax)};background:var(--axis)` }), h('i', { style: `width:${wide(Math.min(after, o.tok), kMax)}` })),
-        h('span', { className: 'r' }, fmt.kt(base(o))),
-        seg('Action', [['asis', 'As is'], ...(o.kind === 'tools' && !o.deferred ? [['defer', 'Defer']] : []), ['rewrite', 'Rewrite'], ...(o.kind === 'blocks' || sec || o.id === 'k:listing' ? [['drop', 'Drop']] : [])], a, id => id === 'rewrite' ? edit(o) : set({ [o.id]: id === 'asis' ? null : { a: id } })),
-        h('span', { className: 'r', style: `color:${r ? 'var(--ink)' : 'var(--muted)'}` }, fmt.kt(after)), step('Reset to default', ICON.reset, () => set({ [o.id]: null }), `visibility:${r ? 'visible' : 'hidden'}`));
-    };
-    const rows = kind === 'sections' ? ord.map((o, j) => visible(o) && row(o, j)) : kind !== 'tools' ? inK.filter(visible).map(row) : ['Built-in', ...new Set(inK.map(group).filter(g => g !== 'Built-in'))].flatMap(g => {
-      const gi = inK.filter(o => group(o) === g), can = gi.filter(o => !o.deferred), n = gi.filter(o => R[o.id]).length, isOpen = !!state.openG[g] || state.cf === 'changed';
-      return [h('div', { className: 'tr top', style: `grid-template-columns:${cols}` },
-        h('button', { type: 'button', className: 'link', 'aria-expanded': String(isOpen), onclick: () => { state.openG[g] = !isOpen; draw(); } }, icon(ICON.down, 12, 'chev' + (isOpen ? ' open' : '')), h('b', {}, g), h('span', { className: 'sub el' }, `${gi.length} tools${n ? ` · ${n} changed` : ''}`)), h('span'), h('span', { className: 'r' }, fmt.kt(sum(gi, base))),
-        can.length ? seg('Action for the group', [['asis', 'As is'], ['defer', 'Defer all']], !n ? 'asis' : can.every(o => R[o.id]?.a === 'defer') ? 'defer' : '', id => set(Object.fromEntries((id === 'defer' ? can : gi).map(o => [o.id, id === 'defer' ? { a: 'defer' } : null])))) : h('span', { className: 'sub' }, 'deferred'),
-        h('span', { className: 'r', style: `color:${n ? 'var(--ink)' : 'var(--muted)'}` }, fmt.kt(sum(gi, o => costOf(o, R[o.id])))), h('span')), ...(isOpen ? gi.filter(visible).map(row) : [])];
-    });
-    const over = d.reads.filter(r => r.tokens > cap.k * 1e3), toggle = (label, on, onclick) => h('button', { type: 'button', className: 'tog', role: 'switch', 'aria-checked': String(on), 'aria-label': label, onclick });
-    const setting = (name, note, control, off) => h('div', { className: 'set' + (off ? ' off' : '') }, h('span', { className: 'col' }, h('span', { style: 'font-weight:500' }, name), h('span', { className: 'sub' }, note)), control);
-    root.classList.toggle('still', root.childElementCount > 0);
-    root.replaceChildren(
-      strip('Context totals', [
-        ['Fixed context', now, fmt.kt, '', 'in every request, before rules'], ['With your rules', draft, fmt.kt, '', pending ? `${fmt.kt(fixedOf(A))} until you apply` : 'live in every session'],
-        ['Saved per request', now - draft, fmt.kt, '', `${fmt.pct(div(now - draft, now) * 100)} of fixed context`], ['Saved on load', sum(items.filter(o => !fixed(o) && R[o.id]), o => base(o) - costOf(o, R[o.id])), fmt.kt, '', 'each time a changed item loads'],
-        ['Changed from default', changed, fmt.int, '', `${pending} not applied`], ['Cost to apply', d.miss, fmt.usd, '', `one cache miss in ${d.open} open sessions`],
-      ], true),
-      h('aside', { className: 'panel', 'aria-label': 'Kinds of context', style: 'animation-delay:.07s' },
-        h('div', { className: 'fill items', style: 'padding:10px 8px' }, Object.entries(KINDS).map(([id, label]) => {
-          const its = items.filter(o => o.kind === id), was = sum(its, base), next = sum(its, o => costOf(o, R[o.id])), n = its.filter(o => R[o.id]).length + (id === 'sections' && cx.order ? 1 : 0), files = id === 'files';
-          return h('button', { type: 'button', className: 'item', 'aria-pressed': String(id === kind), onclick: () => { state.kind = id; draw(); } }, h('b', {}, label), h('span', { className: 'tn r' }, files ? cap.on ? cap.k + 'K cap' : 'Off' : its.length ? fmt.kt(next) : '–'),
-            h('span', { className: 'sub el' }, files ? 'size cap' : its.length ? `${its.length} items${n ? ` · ${n} changed` : ''}` : 'no items yet'), h('span', { className: 'sub tn r' }, next !== was ? 'was ' + fmt.kt(was) : ''),
-            !files && its.length > 0 && h('span', { className: 'track', style: 'grid-column:1/-1;height:4px;margin-top:4px' }, h('i', { style: `width:${wide(next, was)};background:var(--plan);transition:width .3s` })));
-        })),
-        h('div', { className: 'sub foot', style: 'padding:12px 20px 16px' }, 'Rules are global. They apply to every session, from its next turn.')),
-      kind === 'files' ? panel('animation-delay:.1s', '', h('div', { className: 'ph' }, title('File reads', ' · files the main agent reads into its context')),
-          setting('Size cap', 'Stop a single read from going over a set size.', toggle('Size cap', cap.on, () => setCap({ on: !cap.on }))),
-          setting('Cap', 'In thousands of tokens, per read.', h('span', { className: 'key', style: 'gap:8px' }, step('Lower the cap', ICON.minus, () => setCap({ k: Math.max(5, cap.k - 5) })), h('span', { className: 'tn', style: 'min-width:44px;text-align:center;font-weight:500' }, cap.k + 'K'), step('Raise the cap', ICON.plus, () => setCap({ k: Math.min(100, cap.k + 5) }))), !cap.on),
-          setting('Allow partial reads under the cap', 'Claude can still read a slice of a larger file, as long as the slice fits.', toggle('Allow partial reads under the cap', cap.part, () => setCap({ part: !cap.part })), !cap.on),
-          h('div', { className: 'ph', style: 'padding-top:16px;border-top:1px solid var(--grid)' }, title('Largest reads', ' · by the main agent, in the last 30 days')),
-          table('minmax(0,1fr) 160px 64px 140px', 'mlrl', ['File', 'Tokens', 'Now', 'With this cap'], d.reads.map(r => { const isOver = cap.on && r.tokens > cap.k * 1e3; return { tall: 34, cells: [h('span', { title: r.file }, r.file.split(/[\\/]/).slice(-3).join('/')), gbar(r.tokens / d.reads[0].tokens), fmt.kt(r.tokens), h('span', { className: 'key', style: `color:${isOver ? 'var(--ink)' : 'var(--muted)'}` }, dot(!isOver ? 'transparent' : cap.part ? 'var(--warn)' : 'var(--crit)'), !cap.on ? 'unchanged' : !isOver ? 'fits' : cap.part ? `slices up to ${cap.k}K` : 'blocked')] }; }), 'No file read in the last 30 days.'),
-          h('div', { className: 'sub tn foot' }, cap.on ? `${over.length} of ${d.reads.length} of these reads are over the cap, ${fmt.kt(sum(over, r => r.tokens))} tokens between them.` : 'The cap is off. Every read goes into context whole.'))
-        : !items.length ? panel('align-items:center;justify-content:center;gap:12px;text-align:center;animation-delay:.1s', '', h('span', { style: 'font-size:15px;font-weight:500' }, 'No items yet'), h('span', { className: 'sub', style: 'max-width:380px' }, 'The list comes from what sessions load. Run one turn in any Claude Code session, then refresh.'), h('button', { type: 'button', className: 'ctl', onclick: load }, 'Refresh'))
-        : panel('animation-delay:.1s', '',
-          h('div', { className: 'ph' }, h('h2', { className: 'h el' }, KINDS[kind], h('span', { className: 'sub' }, ABOUT[kind][0])), h('div', { className: 'row', style: 'gap:14px;flex:none' }, h('span', { className: 'sub key' }, h('i', { className: 'dot', style: 'width:7px;height:7px;box-shadow:inset 0 0 0 1.5px var(--plan)' }), 'not applied', h('i', { className: 'dot', style: 'width:7px;height:7px;background:var(--plan);margin-left:8px' }), 'applied'), seg('Show', [['all', 'All'], ['changed', 'Changed']], state.cf, v => { state.cf = v; draw(); }))),
-          h('div', { className: 'tr th', style: `grid-template-columns:${cols}` }, ['Item', kind === 'sections' ? 'Order' : 'Tokens', 'Now', 'Action', 'After', ''].map((c, i) => h('span', { className: i === 2 || i === 4 ? 'r' : '' }, c))),
-          h('div', { className: 'fill scroll' }, rows, state.cf === 'changed' && !inK.some(o => R[o.id] || A[o.id]) && h('span', { className: 'sub', style: 'display:block;padding:8px 24px' }, 'Nothing is changed in this kind.')),
-          h('div', { className: 'sub foot' }, ABOUT[kind][1])),
-      h('aside', { className: 'panel', 'aria-label': 'Changes', style: 'animation-delay:.14s' },
-        h('div', { className: 'ph' }, title('Changes', pending ? ` · ${pending} not applied` : changed ? ' · all applied' : ''), changed > 0 && h('button', { type: 'button', className: 'more', style: 'padding:0 10px;margin-right:-10px', onclick: () => touch(() => { cx.rules = {}; cx.order = null; cap.on = false; }) }, 'Reset all')),
-        h('div', { className: 'fill scroll col', style: 'padding:0 16px 10px' }, chg.map(c => h('div', { style: 'display:grid;grid-template-columns:8px minmax(0,1fr) auto 26px;align-items:center;gap:1px 10px;padding:7px 8px' }, h('i', { className: 'dot', style: `background:${c.isLive ? 'var(--plan)' : 'transparent'};box-shadow:inset 0 0 0 1.5px var(--plan)` }), h('span', { className: 'mono el', style: 'color:var(--ink)' }, c.name), h('span', { className: 'sub tn' }, c.cost),
-          step('Reset to default', ICON.reset, c.reset, `grid-row:span 2;visibility:${c.reset ? 'visible' : 'hidden'}`), h('span'), h('span', { className: 'sub el', style: 'grid-column:2/4' }, `${c.what} · ${c.isLive ? 'applied' : 'not applied'}`))),
-          !chg.length && h('span', { className: 'sub', style: 'padding:8px' }, 'Nothing is changed from the default. Pick an action on any item to start.')),
-        h('div', { className: 'col foot', style: 'gap:10px;padding:14px 20px 18px' }, pending ? [
-          h('div', { className: 'col', style: 'gap:3px' }, h('span', { style: 'font-weight:500' }, d.open ? `One cache miss in each of ${d.open} open sessions` : 'No session is open'), h('span', { className: 'sub' }, `About ${fmt.usd(d.miss)} once, however many changes you apply together. Each session picks the rules up on its next turn.`)),
-          h('div', { style: 'display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px' }, h('button', { type: 'button', className: 'ctl', style: 'height:34px;padding:0 14px', onclick: () => touch(() => Object.assign(cx, { rules: { ...A }, order: d.order && [...d.order], cap: { ...d.cap } })) }, 'Discard'), h('button', { type: 'button', className: 'go', onclick: () => send({ rules: R, order: cx.order, cap }, 'Applied. Each session picks the rules up on its next turn. Undoing costs another cache miss.') }, `Apply ${pending} change${pending === 1 ? '' : 's'}`)),
-          cx.note && h('span', { className: 'sub', role: 'alert' }, cx.note)]
-          : [h('span', { className: 'sub' }, cx.note || (changed ? 'Every change is applied.' : 'Changes collect here, then apply together.')), d.canUndo && h('button', { type: 'button', className: 'ctl', style: 'height:34px', onclick: () => send({ undo: true }, 'The last apply is undone.') }, 'Undo last apply')])));
-  };
-  (cx ? Promise.resolve() : loadCx()).then(() => { header(); draw(); }).catch(e => root.replaceChildren(h('p', { className: 'note', role: 'alert', style: 'grid-column:1/-1' }, e.message)));
-  return root;
-}
-
-const VIEWS = { overview, sessions: sessionsView, tools: toolsView, breakdown, context: contextView };
+const VIEWS = { overview, sessions: sessionsView, tools: toolsView, breakdown };
 function render() {
   if (!data) return;
   const [, view, id] = location.hash.split('/');
@@ -768,7 +638,7 @@ async function load() {
   document.body.classList.add('busy');
   header();
   if (!data) $('main').replaceChildren(h('p', { className: 'sub note', role: 'status' }, 'Reading transcripts. A first load takes about 10 seconds.'));
-  try { data = await get('/api/data'); cur = cx = null; document.body.classList.remove('busy'); render(); }
+  try { data = await get('/api/data'); cur = null; document.body.classList.remove('busy'); render(); }
   catch (e) { document.body.classList.remove('busy'); header(); $('main').replaceChildren(h('p', { className: 'note', role: 'alert' }, `Could not load usage data: ${e.message}. Check that the dashboard server runs, then refresh.`)); }
 }
 addEventListener('hashchange', render);

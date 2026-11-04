@@ -1,0 +1,5 @@
+{
+  "name": "prompt-strip",
+  "version": "0.1.0",
+  "description": "Strips, rewrites and reorders what Claude Code loads into every session: system prompt sections, first-message context, per-turn reminders, tool descriptions, skill bodies, the subagent listing and command descriptions, and adds sections of your own. Edited in its dashboard at http://127.0.0.1:5199, opened with /prompt-strip; needs node on the PATH."
+}
