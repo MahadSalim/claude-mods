@@ -7,7 +7,12 @@ export const DIRS = {
   commands: 'commands',
   hooks: 'hooks',
   data: 'settings-manager',
+  /** One file per session with its context use, by session id; the Home tab shows them. */
+  context: 'settings-manager/context',
 }
+
+/** How many sessions' context files the window keeps; it deletes older ones. */
+export const CONTEXT_KEEP = 20
 
 /** Name of the subfolder that held turned-off items before `disabled.json`; the window moves what is left into the file. */
 export const DISABLED = 'disabled'

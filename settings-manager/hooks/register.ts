@@ -157,6 +157,55 @@ const PERSONS_WORDS = new Set(['queued_command'])
 /** Attachments that carry the contents of files: they can be turned off, but the mod never saves or edits their text. */
 const FILE_CONTENTS = new Set(['file', 'edited_text_file', 'nested_memory'])
 
+/**
+ * Whether a context count is waiting or running: `again` when another turn ended meanwhile, so one
+ * more count follows. Only one count runs at a time, because each one sends token-count requests.
+ */
+let measuring: 'idle' | 'busy' | 'again' = 'idle'
+
+function scheduleMeasure($: $) {
+  if (measuring !== 'idle') {
+    measuring = 'again'
+    return
+  }
+  measuring = 'busy'
+  $.clock.after(2000, () => void measure($))
+}
+
+/**
+ * Counts the session's context as /context does, with the token-count API, and writes it to the
+ * session's file in `DIRS.context`, where the Home tab reads it. The grid is left out.
+ */
+async function measure($: $) {
+  try {
+    const [id, cwd, usage] = await Promise.all([$.session.id(), $.session.cwd(), $.session.usage({ breakdown: 'full' })])
+    const b = usage.context.breakdown
+    if (b) {
+      const file = {
+        id,
+        cwd,
+        savedAt: new Date().toISOString(),
+        model: b.model,
+        totalTokens: b.totalTokens,
+        maxTokens: b.rawMaxTokens,
+        autoCompactThreshold: b.autoCompactThreshold,
+        categories: b.categories.map(({ name, tokens, kind }) => ({ name, tokens, kind })),
+        mcpTools: b.mcpTools.map(({ name, serverName, tokens, isLoaded }) => ({ name, serverName, tokens, isLoaded })),
+        skills: (b.skills?.skillFrontmatter ?? []).map(({ name, source, pluginName, tokens }) => ({ name, source, pluginName, tokens })),
+        agents: b.agents.map(({ agentType, source, tokens }) => ({ name: agentType, source, tokens })),
+        memoryFiles: b.memoryFiles.map(({ path, type, tokens }) => ({ path, type, tokens })),
+        commands: b.slashCommands && { count: b.slashCommands.includedCommands, tokens: b.slashCommands.tokens },
+      }
+      await $.fs.write(at(DIRS.context, `${fileName(id)}.json`), JSON.stringify(file))
+    }
+  } catch {
+    // A count that fails leaves the last file as it was.
+  }
+  const isAgain = measuring === 'again'
+  measuring = 'idle'
+  if (isAgain) scheduleMeasure($)
+}
+
 const appScript = ($: $) => join($.plugin.root, 'app', 'main.mjs')
 
 async function open($: $) {
@@ -182,7 +231,14 @@ export const register: Register = on => {
     const started = await next(e)
     // Starts the tray icon if it is not running yet; the session does not wait for it.
     void $.process.run(['node', appScript($), root, '--tray'], { timeoutMs: 20000 }).catch(() => {})
+    scheduleMeasure($)
     return started
+  })
+
+  // After each turn, the Home tab's numbers for this session are counted again.
+  on('session.measure', async ($, e, next) => {
+    if (e.changed.includes('context')) scheduleMeasure($)
+    return next(e)
   })
 
   on('turn.start', async ($, e, next) => {

@@ -234,6 +234,66 @@ test('turned-off subagents, reminders and commands are withheld', async ($, on) 
   expect(await $.command.run({ command: 'clear', args: '' })).toEqual({ text: 'ran' })
 })
 
+test('the context breakdown is saved per session after start and after each turn', async ($, on) => {
+  const { files, clock } = session(on)
+  const asked: unknown[] = []
+  let messages = 100
+  on('session.id', () => ({ value: 'abc' }))
+  on('session.cwd', () => ({ value: '/work' }))
+  on('session.usage', ($, e) => {
+    asked.push(e.breakdown)
+    const categories = [
+      { name: 'System prompt', tokens: 8600, color: 'promptBorder', isDeferred: false, kind: 'used' as const },
+      { name: 'Messages', tokens: messages, color: 'inactive', isDeferred: false, kind: 'used' as const },
+      { name: 'MCP tools (deferred)', tokens: 5000, color: 'inactive', isDeferred: true, kind: 'deferred' as const },
+    ]
+    const breakdown = {
+      categories,
+      totalTokens: 8600 + messages,
+      maxTokens: 400000,
+      rawMaxTokens: 400000,
+      autocompactSource: 'auto' as const,
+      percentage: 2,
+      gridRows: [[{ color: 'inactive', isFilled: true, categoryName: 'Messages', tokens: messages, percentage: 0, squareFullness: 1 }]],
+      model: 'claude-opus-5-5',
+      memoryFiles: [{ path: 'C:/cfg/CLAUDE.md', type: 'User', tokens: 40 }],
+      mcpTools: [{ name: 'mcp__github__get_me', serverName: 'github', tokens: 300, isLoaded: false }],
+      agents: [{ agentType: 'reviewer', source: 'userSettings', tokens: 90 }],
+      skills: { totalSkills: 1, includedSkills: 1, tokens: 50, skillFrontmatter: [{ name: 'pdf', source: 'plugin' as const, tokens: 50 }] },
+      isAutoCompactEnabled: true,
+      apiUsage: null,
+    }
+    return { value: { startedAt: 0, context: { window: 400000, breakdown }, rateLimits: [] } }
+  })
+  on('session.measure', ($, e) => ({ changed: e.changed }))
+  const saved = () => JSON.parse(files.get(`${ROOT}/settings-manager/context/abc.json`) ?? 'null')
+  await start($)
+
+  await clock.advance(3000)
+  expect(asked).toEqual(['full'])
+  expect(saved()).toMatchObject({
+    id: 'abc',
+    cwd: '/work',
+    totalTokens: 8700,
+    maxTokens: 400000,
+    categories: [{ name: 'System prompt', tokens: 8600, kind: 'used' }, { name: 'Messages', tokens: 100 }, { kind: 'deferred' }],
+    mcpTools: [{ serverName: 'github', tokens: 300 }],
+    skills: [{ name: 'pdf', tokens: 50 }],
+    agents: [{ name: 'reviewer', tokens: 90 }],
+  })
+  expect(saved().gridRows).toBeUndefined()
+
+  // A turn that changed the context counts again; one that did not, does not.
+  messages = 2000
+  await $.session.measure({ context: { window: 400000 }, rateLimits: [], changed: ['cost'] })
+  await clock.advance(3000)
+  expect(asked).toHaveLength(1)
+  await $.session.measure({ context: { window: 400000 }, rateLimits: [], changed: ['context'] })
+  await clock.advance(3000)
+  expect(asked).toHaveLength(2)
+  expect(saved().totalTokens).toBe(10600)
+})
+
 test('/settings-manager starts the window with the config folder', async ($, on) => {
   session(on)
   const runs: (readonly string[])[] = []

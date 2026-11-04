@@ -8,6 +8,7 @@ Run `/settings-manager` to open the window. The window needs Node.js on PATH. On
 
 | Section | Where the state lives |
 | --- | --- |
+| Home | Shows what takes up the context window of your recent sessions: each category, MCP tool, skill, subagent and memory file, with its tokens. After each turn, the mod counts the session the same way as /context, with the token-count API, and saves it in `.claude/settings-manager/context/<session id>.json`. The window keeps the 20 newest files. |
 | Skills | `skills` in `disabled.json`. A turned-off skill leaves the skill list, and the Skill tool refuses it. |
 | System prompt | `sections` in `disabled.json`. Each section is a file in `.claude/prompts/<id>.md`. Claude reads your edited text. Reset to default undoes an edit. |
 | Reminders | `reminders` in `disabled.json`. Each reminder type is a file in `.claude/prompts/reminders/`. Claude reads your edited text. Reset to default undoes an edit. |

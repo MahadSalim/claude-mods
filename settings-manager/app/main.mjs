@@ -9,7 +9,7 @@ import { createServer } from 'node:http'
 import { homedir } from 'node:os'
 import nodePath from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { DIRS, DISABLED, DISABLED_KINDS, FILES, fileName, frontmatter, join, parseDisabled } from './shared.mjs'
+import { CONTEXT_KEEP, DIRS, DISABLED, DISABLED_KINDS, FILES, fileName, frontmatter, join, parseDisabled } from './shared.mjs'
 
 const self = fileURLToPath(import.meta.url)
 const [root = join(homedir(), '.claude'), mode] = process.argv.slice(2)
@@ -328,6 +328,19 @@ function env(settings) {
   return grouped(items)
 }
 
+/**
+ * The context use that the mod saved for each session, newest first. The window keeps the newest
+ * CONTEXT_KEEP files and deletes the rest.
+ */
+async function contexts() {
+  const dir = at(DIRS.context)
+  const names = (await fs.readdir(dir).catch(() => [])).filter(name => name.endsWith('.json'))
+  const read = await Promise.all(names.map(async name => ({ name, value: await readJson(join(dir, name), undefined) })))
+  const sorted = read.filter(file => file.value?.categories).sort((a, b) => String(b.value.savedAt).localeCompare(String(a.value.savedAt)))
+  await Promise.all(sorted.slice(CONTEXT_KEEP).map(file => fs.rm(join(dir, file.name), { force: true })))
+  return sorted.slice(0, CONTEXT_KEEP).map(file => file.value)
+}
+
 async function model() {
   const [settings, catalog, edits, disabled] = await Promise.all([
     readJson(at('settings.json'), {}),
@@ -337,6 +350,7 @@ async function model() {
   ])
   const section = async (id, title, folder, note, groups, empty) => ({ id, title, folder, note, empty, groups: await groups })
   return Promise.all([
+    section('home', 'Home', '', 'What takes up the context window of your recent sessions. Counted after each turn, the same way as /context.', []),
     section('skills', 'Skills', DIRS.skills, 'Turned-off skills are listed in settings-manager/disabled.json. Changes reach Claude in new sessions.', skills(catalog, disabled)),
     section('prompts', 'System prompt', DIRS.prompts, 'Each section is a file in prompts. Edit a section to change what Claude reads.', prompts(catalog, edits, disabled)),
     section('agents', 'Subagents', DIRS.agents, 'Subagent types that Claude can start.', agents(catalog, disabled)),
@@ -751,7 +765,7 @@ async function serve() {
         await run(act, value, label)
       }
       if (req.method === 'POST' && url.pathname === '/api/undo') await undo()
-      if (url.pathname.startsWith('/api/')) return send(res, 200, JSON.stringify({ root, sections: await model(), undo: history.at(-1)?.label }), 'application/json')
+      if (url.pathname.startsWith('/api/')) return send(res, 200, JSON.stringify({ root, sections: await model(), contexts: await contexts(), undo: history.at(-1)?.label }), 'application/json')
       send(res, 404, 'Not found')
     } catch (error) {
       send(res, 500, String(error?.message ?? error))

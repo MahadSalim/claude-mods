@@ -32,5 +32,6 @@ export function useSections() {
     return () => (removeEventListener('focus', reload), clearInterval(timer))
   }, [run])
 
-  return { sections: state.sections, lastChange: state.undo, act, undo }
+  const reload = useCallback(() => run(api.load()), [run])
+  return { sections: state.sections, contexts: state.contexts ?? [], lastChange: state.undo, act, undo, reload }
 }

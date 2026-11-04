@@ -29,8 +29,28 @@ export type Group = { title: string; items: Item[]; toggle?: Item }
 
 export type Section = { id: string; title: string; note: string; folder: string; empty?: string; groups: Group[] }
 
-/** What the window server sends: the sections, and a label for the change that Undo would undo. */
-export type State = { sections: Section[]; undo?: string }
+type Tokens = { tokens: number }
+
+/** One session's context use as the mod saved it: the /context breakdown, without the grid. */
+export type Context = {
+  id: string
+  cwd: string
+  savedAt: string
+  model: string
+  totalTokens: number
+  maxTokens: number
+  autoCompactThreshold?: number
+  /** `used` rows fill the window, `free` is what is left, `buffer` is kept for compaction, `deferred` loads on demand. */
+  categories: ({ name: string; kind: 'used' | 'free' | 'buffer' | 'deferred' } & Tokens)[]
+  mcpTools: ({ name: string; serverName: string; isLoaded: boolean } & Tokens)[]
+  skills: ({ name: string; source: string; pluginName?: string } & Tokens)[]
+  agents: ({ name: string; source: string } & Tokens)[]
+  memoryFiles: ({ path: string; type: string } & Tokens)[]
+  commands?: { count: number } & Tokens
+}
+
+/** What the window server sends: the sections, each session's context use, and a label for the change that Undo would undo. */
+export type State = { sections: Section[]; contexts?: Context[]; undo?: string }
 
 declare global {
   interface Window {

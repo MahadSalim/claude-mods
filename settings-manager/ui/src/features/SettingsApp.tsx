@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Toaster } from '@/components/ui/sonner'
 import { isFrameless } from '@/api'
 import type { Item } from '@/types'
+import { HomeView } from './HomeView'
 import { SearchResults, SectionView } from './SectionView'
 import { Sidebar } from './Sidebar'
 import { TextDialog } from './TextDialog'
@@ -10,8 +11,8 @@ import { useSections } from './useSections'
 
 /** The Settings Manager window. */
 export function SettingsApp() {
-  const { sections, lastChange, act, undo } = useSections()
-  const [current, setCurrent] = useState('skills')
+  const { sections, contexts, lastChange, act, undo, reload } = useSections()
+  const [current, setCurrent] = useState('home')
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState<Item>()
   const main = useRef<HTMLElement>(null)
@@ -19,6 +20,14 @@ export function SettingsApp() {
   const section = sections.find(section => section.id === current) ?? sections[0]
   const toTop = () => main.current?.scrollTo({ top: 0 })
   const rowProps = { onAct: act, onOpen: setOpen }
+  const isHome = !search && section?.id === 'home'
+
+  // The Home tab reloads every 10 seconds while it shows, so a turn that ends in a session shows up.
+  useEffect(() => {
+    if (!isHome) return
+    const timer = setInterval(() => document.visibilityState === 'visible' && reload(), 10000)
+    return () => clearInterval(timer)
+  }, [isHome, reload])
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -33,7 +42,13 @@ export function SettingsApp() {
         />
         <main ref={main} className="flex-1 overflow-y-auto px-8 pt-5.5 pb-15">
           <div key={search ? 'search' : section?.id} className="mx-auto max-w-[880px] animate-in duration-150 fade-in">
-            {search ? <SearchResults sections={sections} query={search} {...rowProps} /> : section && <SectionView section={section} lastChange={lastChange} onUndo={undo} {...rowProps} />}
+            {search ? (
+              <SearchResults sections={sections} query={search} {...rowProps} />
+            ) : isHome ? (
+              <HomeView section={section} contexts={contexts} />
+            ) : (
+              section && <SectionView section={section} lastChange={lastChange} onUndo={undo} {...rowProps} />
+            )}
           </div>
         </main>
       </div>

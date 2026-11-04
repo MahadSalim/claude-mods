@@ -1,4 +1,4 @@
-import { createLucideIcon, FileText, KeyRound, PlugZap, Puzzle, Server, Search, SlidersHorizontal, Sparkles, SquareTerminal, WandSparkles, Wrench, type LucideIcon } from 'lucide-react'
+import { createLucideIcon, FileText, House, KeyRound, PlugZap, Puzzle, Server, Search, SlidersHorizontal, Sparkles, SquareTerminal, WandSparkles, Wrench, type LucideIcon } from 'lucide-react'
 import { Fragment } from 'react'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
@@ -16,6 +16,7 @@ const Bots = createLucideIcon('bots', [
 ])
 
 export const SECTION_ICONS: Record<string, LucideIcon> = {
+  home: House,
   skills: WandSparkles,
   prompts: FileText,
   agents: Bots,
@@ -29,7 +30,7 @@ export const SECTION_ICONS: Record<string, LucideIcon> = {
 }
 
 /** Sections that have a divider after them. */
-const LINE_AFTER = new Set(['mcp', 'hooks'])
+const LINE_AFTER = new Set(['home', 'mcp', 'hooks'])
 
 type Props = { sections: Section[]; current: string; query: string; onQuery: (query: string) => void; onPick: (id: string) => void }
 

@@ -6,7 +6,9 @@ export declare const DIRS: {
   commands: string
   hooks: string
   data: string
+  context: string
 }
+export declare const CONTEXT_KEEP: number
 export declare const DISABLED: string
 export declare const FILES: { catalog: string; defaults: string; edits: string; disabled: string; server: string; history: string }
 export type DisabledKind = 'skills' | 'sections' | 'reminders' | 'agents' | 'commands'
