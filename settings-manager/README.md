@@ -56,5 +56,6 @@ npm run build
 ```
 claude plugin test settings-manager
 node --test settings-manager/tests/migrate.test.mjs
-cd ui && npm test
 ```
+
+The window has no UI tests. Check a UI change by opening the window and looking at it.
