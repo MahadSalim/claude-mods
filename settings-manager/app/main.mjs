@@ -235,17 +235,39 @@ function tools(catalog, settings) {
 /** A server name that is an id, as claude.ai connectors have, is shown as a short connector name. */
 const serverTitle = server => (/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(server) ? `Claude.ai connector ${server.slice(0, 8)}` : server)
 
+/** A server's name as it appears in its tools' names, `mcp__<server>__<tool>`. */
+const toolServerName = server => server.replace(/[^a-zA-Z0-9_-]/g, '_')
+
 /**
- * One group per MCP server: the servers whose tools a session saw, and the servers in .claude.json that none did.
+ * The servers set up only in a project: in a project's entry of .claude.json, or in the .mcp.json of a project
+ * that .claude.json lists. A server that is also set up at user level is not one of them.
+ */
+async function projectOnlyServers(config, userServers) {
+  const names = new Set()
+  for (const [path, project] of Object.entries(config.projects ?? {})) {
+    for (const server of Object.keys(project?.mcpServers ?? {})) names.add(server)
+    for (const server of Object.keys((await readJson(join(path, '.mcp.json'), {})).mcpServers ?? {})) names.add(server)
+  }
+  for (const server of userServers) names.delete(server)
+  return new Set([...names].map(toolServerName))
+}
+
+/**
+ * One group per user-level MCP server: the servers in .claude.json, and the servers whose tools a session saw,
+ * such as the desktop app's own servers and Claude.ai connectors. Servers set up only in a project are left out.
  * The group's own switch, beside its name, turns the whole server off with the deny rule `mcp__<server>`.
  * Each row turns off one tool; while the server is off, the rows keep their own state but cannot be changed.
  */
 async function mcp(catalog, settings) {
   const deny = settings.permissions?.deny ?? []
-  const servers = new Map(Object.keys((await readJson(at('.claude.json'), {})).mcpServers ?? {}).map(server => [server, []]))
+  const config = await readJson(at('.claude.json'), {})
+  const userServers = Object.keys(config.mcpServers ?? {})
+  const projectOnly = await projectOnlyServers(config, userServers)
+  const servers = new Map(userServers.map(server => [toolServerName(server), []]))
   for (const [name, entry] of Object.entries(catalog.tools ?? {})) {
     if (!entry.mcp) continue
     const [, server = 'other', ...rest] = name.split('__')
+    if (projectOnly.has(server)) continue
     if (!servers.has(server)) servers.set(server, [])
     servers.get(server).push({ name, tool: rest.join('__') || name, description: entry.description ?? '' })
   }
@@ -320,7 +342,7 @@ async function model() {
     section('agents', 'Subagents', DIRS.agents, 'Subagent types that Claude can start.', agents(catalog, disabled)),
     section('commands', 'Commands', DIRS.commands, 'Turned-off commands are hidden and refused.', commands(catalog, disabled)),
     section('tools', 'Tools', '', 'Turning a tool off adds it to permissions.deny in settings.json.', tools(catalog, settings)),
-    section('mcp', 'MCP', '', 'Turning a server or tool off adds it to permissions.deny in settings.json.', mcp(catalog, settings), 'No session has seen an MCP server yet.'),
+    section('mcp', 'MCP', '', 'User-level and desktop app servers. Turning a server or tool off adds it to permissions.deny in settings.json.', mcp(catalog, settings), 'No session has seen an MCP server yet.'),
     section('plugins', 'Plugins', 'plugins', 'Plugins and mods load in new sessions, or after /reload-plugins.', plugins(settings)),
     section('hooks', 'Hooks', '', 'Turned-off settings hooks move from settings.json to settings-manager/disabled.json.', hooks(settings, disabled)),
     section('general', 'General', '', 'Settings from settings.json.', general(settings)),
