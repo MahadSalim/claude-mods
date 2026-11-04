@@ -430,7 +430,9 @@ export const register: Register = on => {
       if (state.edited !== undefined) isAfterEdit = true
       sections.push({ ...section, text, scope: isAfterEdit ? ('session' as const) : section.scope })
     }
-    sectionChars = sections.map(section => ({ name: section.id, chars: section.text.length }))
+    // Side requests, such as the mod's own Haiku summaries, offer no tools and send one short section. The desktop
+    // app's own prompt is also `lean`, so the traits do not tell them apart.
+    if (e.tools.length) sectionChars = sections.map(section => ({ name: section.id, chars: section.text.length }))
     return { sections }
   })
 
