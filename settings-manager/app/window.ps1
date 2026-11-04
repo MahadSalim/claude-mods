@@ -1,131 +1,82 @@
-# Window commands for the Settings Manager window, one per line on stdin:
-# frame <css width> <css height> <pixel ratio> | min | max | close | drag | size <1-8>
-param([string]$Title, [string]$Icon)
-Add-Type @'
-using System; using System.Runtime.InteropServices; using System.Text; using System.Threading;
-public static class Win {
-  delegate bool EnumProc(IntPtr h, IntPtr l);
-  public struct Rect { public int L, T, R, B; }
-  struct Point { public int X, Y; }
-  struct MonitorInfo { public int Size; public Rect Monitor, Work; public int Flags; }
-  [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc p, IntPtr l);
-  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
-  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
-  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
-  [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
-  [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
-  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, int m, IntPtr w, IntPtr l);
+# Opens the Settings Manager page in a WebView2 window that has no native title bar.
+# The page sends window commands with chrome.webview.postMessage: min | max | close | size <1-8>
+param([string]$Url, [string]$Icon)
+$sdk = Join-Path $PSScriptRoot 'webview2'
+$dlls = "$sdk\Microsoft.Web.WebView2.Core.dll", "$sdk\Microsoft.Web.WebView2.WinForms.dll"
+Add-Type -Path $dlls
+Add-Type -ReferencedAssemblies (@('System.Windows.Forms', 'System.Drawing') + $dlls) @'
+using System; using System.Drawing; using System.Runtime.InteropServices; using System.Windows.Forms;
+using Microsoft.Web.WebView2.Core; using Microsoft.Web.WebView2.WinForms;
+
+public class Host : Form {
+  [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr c);
+  [DllImport("user32.dll")] static extern uint GetDpiForSystem();
+  [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr h);
+  [DllImport("user32.dll")] static extern int GetSystemMetricsForDpi(int i, uint dpi);
+  [DllImport("user32.dll")] static extern bool IsZoomed(IntPtr h);
+  [DllImport("user32.dll")] static extern bool ReleaseCapture();
+  [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int command);
   [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int m, IntPtr w, IntPtr l);
-  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out Rect r);
   [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int ht, int flags);
-  [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr h, IntPtr r, bool redraw);
-  [DllImport("user32.dll")] static extern bool GetCursorPos(out Point p);
-  [DllImport("user32.dll")] static extern short GetAsyncKeyState(int key);
-  [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr h, int flags);
-  [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr m, ref MonitorInfo i);
-  [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr c);
-  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr LoadImage(IntPtr i, string name, int type, int cx, int cy, int flags);
-  [DllImport("gdi32.dll")] static extern IntPtr CreateRectRgn(int l, int t, int r, int b);
-  [DllImport("gdi32.dll")] static extern IntPtr CreateRoundRectRgn(int l, int t, int r, int b, int w, int h);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr LoadLibrary(string path);
 
-  static int top, side, round;
-  static Rect? restore;
-  const int MinWidth = 640, MinHeight = 420;
+  readonly WebView2 view = new WebView2();
 
-  static bool Is(IntPtr h, string title) {
-    var text = new StringBuilder(256); var cls = new StringBuilder(256);
-    GetWindowText(h, text, 256); GetClassName(h, cls, 256);
-    return IsWindowVisible(h) && !IsIconic(h) && text.ToString() == title && cls.ToString() == "Chrome_WidgetWin_1";
+  Host(string url, string title, string icon, string data) {
+    float scale = GetDpiForSystem() / 96f;
+    Text = title;
+    Icon = new Icon(icon);
+    BackColor = Color.FromArgb(0x1e, 0x1e, 0x1e);
+    Size = new Size((int)(1120 * scale), (int)(780 * scale));
+    MinimumSize = new Size((int)(640 * scale), (int)(420 * scale));
+    StartPosition = FormStartPosition.CenterScreen;
+    view.Dock = DockStyle.Fill;
+    view.DefaultBackgroundColor = BackColor;
+    view.CreationProperties = new CoreWebView2CreationProperties { UserDataFolder = data };
+    view.CoreWebView2InitializationCompleted += (s, e) => {
+      if (!e.IsSuccess) { MessageBox.Show(e.InitializationException.Message, title); Close(); return; }
+      view.CoreWebView2.Settings.IsNonClientRegionSupportEnabled = true;
+      view.CoreWebView2.WebMessageReceived += (s2, m) => Run(m.TryGetWebMessageAsString());
+      view.CoreWebView2.Navigate(url);
+    };
+    Controls.Add(view);
+    view.EnsureCoreWebView2Async();
   }
 
-  /** The foreground window with this title, else the topmost one that is not minimized. */
-  public static IntPtr Find(string title) {
-    var found = GetForegroundWindow();
-    if (Is(found, title)) return found;
-    found = IntPtr.Zero;
-    EnumWindows((h, l) => { if (!Is(h, title)) return true; found = h; return false; }, IntPtr.Zero);
-    return found;
+  void Run(string command) {
+    var parts = command.Split(' ');
+    if (parts[0] == "min") WindowState = FormWindowState.Minimized;
+    if (parts[0] == "max") WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized;
+    if (parts[0] == "close") Close();
+    if (parts[0] == "size") { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)(9 + int.Parse(parts[1])), IntPtr.Zero); }
   }
 
-  /** Clips the browser's own title bar and sets the window icon. */
-  public static void Frame(IntPtr h, double width, double height, double ratio, string icon) {
-    Rect r; GetWindowRect(h, out r);
-    side = (int)Math.Round((r.R - r.L - width * ratio) / 2);
-    top = (int)Math.Round(r.B - r.T - height * ratio) - side;
-    round = (int)(16 * ratio);
-    Clip(h);
-    for (int kind = 0; kind < 2; kind++) {
-      int size = (int)(16 * (1 + kind) * ratio);
-      var image = LoadImage(IntPtr.Zero, icon, 1, size, size, 0x10);
-      if (image != IntPtr.Zero) SendMessage(h, 0x80, (IntPtr)kind, image);
-    }
+  protected override void OnShown(EventArgs e) {
+    ShowWindow(Handle, 5);
+    base.OnShown(e);
   }
 
-  static void Clip(IntPtr h) {
-    Rect r; GetWindowRect(h, out r);
-    int w = r.R - r.L, ht = r.B - r.T;
-    SetWindowRgn(h, restore.HasValue ? CreateRectRgn(side, top, w - side, ht - side) : CreateRoundRectRgn(side, top, w - side + 1, ht - side + 1, round, round), true);
+  protected override void OnHandleCreated(EventArgs e) {
+    base.OnHandleCreated(e);
+    SetWindowPos(Handle, IntPtr.Zero, 0, 0, 0, 0, 0x27);
   }
 
-  static void Place(IntPtr h, int x, int y, int w, int ht) {
-    SetWindowPos(h, IntPtr.Zero, x, y, w, ht, 0x14);
-    Clip(h);
+  /** Makes the client area cover the title bar, and keeps it on screen when maximized. */
+  protected override void WndProc(ref Message m) {
+    if (m.Msg != 0x83 || m.WParam == IntPtr.Zero) { base.WndProc(ref m); return; }
+    int top = Marshal.ReadInt32(m.LParam, 4);
+    base.WndProc(ref m);
+    uint dpi = GetDpiForWindow(m.HWnd);
+    Marshal.WriteInt32(m.LParam, 4, top + (IsZoomed(m.HWnd) ? GetSystemMetricsForDpi(33, dpi) + GetSystemMetricsForDpi(92, dpi) : 0));
+    m.Result = IntPtr.Zero;
   }
 
-  /** Fills the monitor's work area with the page, or puts the window back. */
-  public static void Max(IntPtr h) {
-    if (restore.HasValue) {
-      var r = restore.Value; restore = null;
-      Place(h, r.L, r.T, r.R - r.L, r.B - r.T);
-      return;
-    }
-    Rect now; GetWindowRect(h, out now); restore = now;
-    var info = new MonitorInfo { Size = Marshal.SizeOf(typeof(MonitorInfo)) };
-    GetMonitorInfo(MonitorFromWindow(h, 2), ref info);
-    var a = info.Work;
-    Place(h, a.L - side, a.T - top, a.R - a.L + 2 * side, a.B - a.T + top + side);
-  }
-
-  /** Moves (edge 0) or resizes the window by one edge (1-8, as WMSZ_*) while the left button is down. */
-  public static void Track(IntPtr h, int edge) {
-    Point start; GetCursorPos(out start);
-    Rect r; GetWindowRect(h, out r);
-    if (edge == 0 && restore.HasValue) {
-      var old = restore.Value; restore = null;
-      int w = old.R - old.L, ht = old.B - old.T;
-      int x = start.X - (int)((double)(start.X - r.L) / (r.R - r.L) * w);
-      r = new Rect { L = x, T = start.Y - top - 18, R = x + w, B = start.Y - top - 18 + ht };
-      Place(h, r.L, r.T, w, ht);
-    }
-    while ((GetAsyncKeyState(1) & 0x8000) != 0) {
-      Point p; GetCursorPos(out p);
-      int dx = p.X - start.X, dy = p.Y - start.Y;
-      int l = r.L, t = r.T, rt = r.R, b = r.B;
-      if (edge == 0) { l += dx; rt += dx; t += dy; b += dy; }
-      if (edge == 1 || edge == 4 || edge == 7) l = Math.Min(l + dx, rt - MinWidth);
-      if (edge == 2 || edge == 5 || edge == 8) rt = Math.Max(rt + dx, l + MinWidth);
-      if (edge == 3 || edge == 4 || edge == 5) t = Math.Min(t + dy, b - MinHeight);
-      if (edge == 6 || edge == 7 || edge == 8) b = Math.Max(b + dy, t + MinHeight);
-      Place(h, l, t, rt - l, b - t);
-      Thread.Sleep(8);
-    }
+  public static void Start(string url, string title, string icon, string loader, string data) {
+    SetProcessDpiAwarenessContext((IntPtr)(-4));
+    LoadLibrary(loader);
+    Application.Run(new Host(url, title, icon, data));
   }
 }
 '@
-[Win]::SetProcessDpiAwarenessContext([IntPtr]-4) | Out-Null
-
-while ($null -ne ($line = [Console]::In.ReadLine())) {
-  $cmd, $rest = $line -split ' '
-  $rest = @($rest)
-  for ($tries = 0; ($h = [Win]::Find($Title)) -eq [IntPtr]::Zero -and $tries -lt 50; $tries++) { Start-Sleep -Milliseconds 100 }
-  if ($h -eq [IntPtr]::Zero) { continue }
-  switch ($cmd) {
-    'frame' { [Win]::Frame($h, [double]$rest[0], [double]$rest[1], [double]$rest[2], $Icon) }
-    'min' { [Win]::ShowWindow($h, 6) | Out-Null }
-    'max' { [Win]::Max($h) }
-    'close' { [Win]::PostMessage($h, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null }
-    'drag' { [Win]::Track($h, 0) }
-    'size' { [Win]::Track($h, [int]$rest[0]) }
-  }
-}
+$arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
+[Host]::Start($Url, 'Settings Manager', $Icon, "$sdk\$arch\WebView2Loader.dll", "$env:LOCALAPPDATA\claude-mods\settings-manager")

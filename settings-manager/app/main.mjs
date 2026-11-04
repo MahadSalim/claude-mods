@@ -65,6 +65,7 @@ async function skills(catalog) {
         group: SKILL_GROUPS[source] ?? 'Other skills',
         value: isOn,
         act: { type: 'move', dir: DIRS.skills, name: folder },
+        ...(md && { edit: { path: join(dir, folder, 'SKILL.md'), text: md.replace(/\r\n/g, '\n') } }),
       })
     }
   }
@@ -330,8 +331,12 @@ function openExternal(target) {
   else detached(process.platform === 'darwin' ? 'open' : 'xdg-open', [target])
 }
 
-/** Opens the page in a browser's app mode, which shows it as a window of its own. */
+/** Opens the page in a WebView2 window on Windows, else in a browser's app mode, which shows it as a window of its own. */
 function openWindow(url) {
+  if (process.platform === 'win32') {
+    const [script, icon] = ['./window.ps1', './icon.ico'].map(file => fileURLToPath(new URL(file, import.meta.url)))
+    return void spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, url, icon], { stdio: 'ignore', windowsHide: true }).on('error', () => {}).unref()
+  }
   const env = process.env
   const candidates =
     process.platform === 'win32'
@@ -366,36 +371,32 @@ async function launch() {
     }
     if (info?.pid !== child.pid) throw new Error('The window server did not start.')
   }
-  openWindow(`http://127.0.0.1:${info.port}/?t=${info.token}`)
+  const res = await fetch(`http://127.0.0.1:${info.port}/api/open`, { headers: { 'x-token': info.token } })
+  if (!res.ok) throw new Error(`The window server could not open the window: ${await res.text()}`)
 }
 
-const ASSETS = { '/icon.svg': 'image/svg+xml', '/icon.png': 'image/png' }
-
-/** On Windows, the helper process that draws the window without the native title bar. */
-function windowFrame() {
-  if (process.platform !== 'win32') return undefined
-  const script = fileURLToPath(new URL('./window.ps1', import.meta.url))
-  const icon = fileURLToPath(new URL('./icon.ico', import.meta.url))
-  const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, 'Settings Manager', icon], { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true })
-  child.on('error', () => {}).stdin.on('error', () => {})
-  return child
-}
+/** Content types of the built UI files in `dist`, by extension. */
+const TYPES = { js: 'text/javascript', css: 'text/css', svg: 'image/svg+xml', png: 'image/png', woff2: 'font/woff2' }
+const DIST = new URL('./dist/', import.meta.url)
+const isAsset = path => /^\/(assets\/)?[\w.-]+\.(js|css|svg|png|woff2)$/.test(path)
 
 async function serve() {
   const token = randomBytes(16).toString('hex')
-  const page = await fs.readFile(new URL('./index.html', import.meta.url), 'utf8')
-  const frame = windowFrame()
+  const page = await fs.readFile(new URL('index.html', DIST), 'utf8')
   let lastSeen = Date.now()
   const send = (res, status, body, type = 'text/plain; charset=utf-8') => res.writeHead(status, { 'content-type': type }).end(body)
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost')
-    if (url.pathname in ASSETS) return send(res, 200, await fs.readFile(new URL(`.${url.pathname}`, import.meta.url)), ASSETS[url.pathname])
+    if (isAsset(url.pathname)) {
+      const body = await fs.readFile(new URL(`.${url.pathname}`, DIST)).catch(() => undefined)
+      return body ? send(res, 200, body, TYPES[url.pathname.split('.').pop()]) : send(res, 404, 'Not found')
+    }
     if (url.searchParams.get('t') !== token && req.headers['x-token'] !== token) return send(res, 403, 'Forbidden')
     lastSeen = Date.now()
     try {
-      if (url.pathname === '/') return send(res, 200, page.replace('data-frameless', `data-frameless="${!!frame}"`), 'text/html; charset=utf-8')
+      if (url.pathname === '/') return send(res, 200, page, 'text/html; charset=utf-8')
       if (url.pathname === '/api/ping') return send(res, 200, 'ok')
-      if (url.pathname === '/api/window') return frame?.stdin.write(`${url.searchParams.get('do')}\n`), send(res, 200, 'ok')
+      if (url.pathname === '/api/open') return openWindow(`http://127.0.0.1:${server.address().port}/?t=${token}`), send(res, 200, 'ok')
       if (req.method === 'POST' && url.pathname === '/api/act') {
         let body = ''
         for await (const chunk of req) body += chunk

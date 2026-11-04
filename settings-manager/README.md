@@ -2,7 +2,7 @@
 
 A Claude Code mod that controls your setup from one desktop window. It works in the terminal and in the Code tab of the desktop app.
 
-Run `/settings-manager` to open the window. The window needs Node.js on PATH. It opens in Microsoft Edge or Google Chrome app mode, so it has no browser bars. On Windows, `app/window.ps1` replaces the native title bar with the window's own title bar.
+Run `/settings-manager` to open the window. The window needs Node.js on PATH. On Windows, `app/window.ps1` opens it in a WebView2 window with its own title bar, using the WebView2 SDK files in `app/webview2`. On macOS and Linux, it opens in Microsoft Edge or Google Chrome app mode, so it has no browser bars.
 
 ## What it controls
 
@@ -28,8 +28,21 @@ Most changes reach Claude in new sessions.
 /plugin install settings-manager --marketplace MahadSalim/claude-mods
 ```
 
+## Window UI
+
+The window is a React app with Tailwind CSS and shadcn/ui components. Its source is in `ui/`, and `app/main.mjs` serves the built files from `app/dist`. `app/dist` is committed, so the mod runs with Node.js only.
+
+After you change the UI, rebuild it:
+
+```
+cd ui
+npm install
+npm run build
+```
+
 ## Test
 
 ```
 claude plugin test settings-manager
+cd ui && npm test
 ```
