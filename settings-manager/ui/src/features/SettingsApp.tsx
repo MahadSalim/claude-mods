@@ -11,7 +11,7 @@ import { useSections } from './useSections'
 
 /** The Settings Manager window. */
 export function SettingsApp() {
-  const { sections, contexts, connectors, lastChange, act, undo, reload } = useSections()
+  const { sections, contexts, connectors, changedAt, lastChange, act, undo, reload } = useSections()
   const [current, setCurrent] = useState('home')
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState<Item>()
@@ -45,7 +45,7 @@ export function SettingsApp() {
             {search ? (
               <SearchResults sections={sections} query={search} {...rowProps} />
             ) : isHome ? (
-              <HomeView section={section} contexts={contexts} connectors={connectors} />
+              <HomeView section={section} context={contexts[0]} connectors={connectors} changedAt={changedAt} />
             ) : (
               section && <SectionView section={section} lastChange={lastChange} onUndo={undo} {...rowProps} />
             )}

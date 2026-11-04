@@ -38,6 +38,8 @@ export type Context = {
   id: string
   cwd: string
   savedAt: string
+  /** When the session started; it loaded the settings of that moment. */
+  startedAt?: string
   model: string
   totalTokens: number
   maxTokens: number
@@ -59,7 +61,7 @@ export type Context = {
  * What the window server sends: the sections, each session's context use, the names of Claude.ai connectors
  * by id, and a label for the change that Undo would undo.
  */
-export type State = { sections: Section[]; contexts?: Context[]; connectors?: Record<string, string>; undo?: string }
+export type State = { sections: Section[]; contexts?: Context[]; connectors?: Record<string, string>; changedAt?: string; undo?: string }
 
 declare global {
   interface Window {

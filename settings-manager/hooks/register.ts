@@ -312,6 +312,7 @@ async function measure($: $) {
         id,
         cwd,
         savedAt: new Date().toISOString(),
+        startedAt: new Date(usage.startedAt).toISOString(),
         model: b.model,
         totalTokens: b.totalTokens,
         maxTokens: b.rawMaxTokens,

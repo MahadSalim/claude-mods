@@ -1,6 +1,5 @@
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import type { Context, Section } from '@/types'
 
@@ -116,7 +115,7 @@ function ContextCard({ context, connectors }: { context: Context; connectors: Re
   const hasEstimates = !!(context.sections?.length || context.tools?.length)
 
   return (
-    <div className="mt-6 rounded-xl border bg-card px-5 py-4">
+    <div className="mt-4 rounded-xl border bg-card px-5 py-4">
       <div className="flex items-baseline justify-between">
         <div className="text-[22px] font-semibold tabular-nums">{percent(used, max).replace(/\.0%$/, '%')} used</div>
         <div className="tabular-nums text-muted-foreground">
@@ -155,38 +154,30 @@ function ContextCard({ context, connectors }: { context: Context; connectors: Re
   )
 }
 
-/** The Home tab: the context use of a recent session, newest first, with a menu to pick another session. */
-export function HomeView({ section, contexts, connectors }: { section: Section; contexts: Context[]; connectors: Record<string, string> }) {
-  const [picked, setPicked] = useState<string>()
-  const context = contexts.find(c => c.id === picked) ?? contexts[0]
+type HomeProps = { section: Section; context?: Context; connectors: Record<string, string>; changedAt?: string }
+
+/**
+ * The Home tab: the context use of the session counted last. When settings changed after that session started, a
+ * note says that the numbers do not show the change, since only a new session loads it.
+ */
+export function HomeView({ section, context, connectors, changedAt }: HomeProps) {
+  const isOld = !!context && !!changedAt && Date.parse(changedAt) > Date.parse(context.startedAt ?? context.savedAt)
   return (
     <>
-      <div className="flex items-center gap-3">
-        <div className="flex-1">
-          <h1 className="mb-1 text-[17px] font-semibold">{section.title}</h1>
-          <div className="text-[13px] text-muted-foreground">{section.note}</div>
-        </div>
-        {contexts.length > 1 && context && (
-          <Select value={context.id} onValueChange={setPicked}>
-            <SelectTrigger className="w-64" aria-label="Session">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {contexts.map(c => (
-                <SelectItem key={c.id} value={c.id}>
-                  {folder(c.cwd)} · {ago(c.savedAt)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-      </div>
+      <h1 className="mb-1 text-[17px] font-semibold">{section.title}</h1>
+      <div className="text-[13px] text-muted-foreground">{section.note}</div>
       {context ? (
         <>
-          <ContextCard context={context} connectors={connectors} />
-          <div className="mt-3 text-[12px] text-muted-foreground">
+          <div className="mt-4 text-[13px] text-muted-foreground">
             {folder(context.cwd)} · {context.model} · counted {ago(context.savedAt)}
           </div>
+          {isOld && (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-700/60 bg-amber-950/40 px-3 py-2 text-[13px] text-amber-200">
+              <TriangleAlert className="mt-0.5 size-4 flex-none" />
+              You changed settings {ago(changedAt!)}, after this session started. Start a new session to see the new numbers.
+            </div>
+          )}
+          <ContextCard context={context} connectors={connectors} />
         </>
       ) : (
         <div className="py-4 text-muted-foreground">No session has been counted yet. Start a Claude Code session with the mod loaded, then reopen this window.</div>

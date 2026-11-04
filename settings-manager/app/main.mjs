@@ -549,6 +549,17 @@ async function contexts() {
   return sorted.slice(0, CONTEXT_KEEP).map(file => file.value)
 }
 
+/**
+ * When the files that change what a session loads last changed: settings.json, disabled.json and the edit records.
+ * The Home tab compares it with when the session was counted.
+ */
+async function changedAt() {
+  const files = [at('settings.json'), disabledFile, at(DIRS.data, FILES.edits)]
+  const times = await Promise.all(files.map(file => fs.stat(file).then(stat => stat.mtimeMs, () => 0)))
+  const latest = Math.max(...times)
+  return latest ? new Date(latest).toISOString() : undefined
+}
+
 async function model() {
   const [settings, catalog, edits, disabled, summaries, connectors] = await Promise.all([
     readJson(at('settings.json'), {}),
@@ -560,7 +571,7 @@ async function model() {
   ])
   const section = async (id, title, folder, note, groups, empty) => ({ id, title, folder, note, empty, groups: await groups })
   return Promise.all([
-    section('home', 'Home', '', 'What takes up the context window of your recent sessions. Counted after each turn, the same way as /context.', []),
+    section('home', 'Home', '', 'What takes up the context window of your latest session. Counted after each turn, the same way as /context.', []),
     section('skills', 'Skills', DIRS.skills, 'Turned-off skills are listed in settings-manager/disabled.json. Changes reach Claude in new sessions.', skills(catalog, disabled, settings)),
     section('prompts', 'System prompt', DIRS.prompts, 'Each section is a file in prompts. Edit a section to change what Claude reads.', prompts(catalog, edits, disabled, summaries)),
     section('agents', 'Subagents', DIRS.agents, 'Subagent types that Claude can start.', agents(catalog, disabled)),
@@ -1109,7 +1120,7 @@ async function serve() {
         await run(act, value, label)
       }
       if (req.method === 'POST' && url.pathname === '/api/undo') await undo()
-      if (url.pathname.startsWith('/api/')) return send(res, 200, JSON.stringify({ root, sections: await model(), contexts: await contexts(), connectors: await readJson(at(DIRS.data, FILES.connectors), {}), undo: history.at(-1)?.label }), 'application/json')
+      if (url.pathname.startsWith('/api/')) return send(res, 200, JSON.stringify({ root, sections: await model(), contexts: await contexts(), connectors: await readJson(at(DIRS.data, FILES.connectors), {}), changedAt: await changedAt(), undo: history.at(-1)?.label }), 'application/json')
       send(res, 404, 'Not found')
     } catch (error) {
       send(res, 500, String(error?.message ?? error))
