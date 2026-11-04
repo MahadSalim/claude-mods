@@ -211,14 +211,53 @@ function commands(catalog) {
 
 function tools(catalog, settings) {
   const deny = settings.permissions?.deny ?? []
-  const items = Object.entries(catalog.tools ?? {}).map(([name, entry]) => ({
-    title: entry.mcp ? name.split('__').slice(2).join('__') || name : name,
-    description: entry.description ?? '',
-    group: entry.mcp ? `MCP: ${name.split('__')[1] ?? 'other'}` : 'Built-in tools',
-    value: !deny.includes(name),
-    act: { type: 'deny', rule: name },
-  }))
+  const items = Object.entries(catalog.tools ?? {})
+    .filter(([, entry]) => !entry.mcp)
+    .map(([name, entry]) => ({
+      title: name,
+      description: entry.description ?? '',
+      group: 'Built-in tools',
+      value: !deny.includes(name),
+      act: { type: 'deny', rule: name },
+    }))
   return grouped(items, ['Built-in tools'])
+}
+
+/** A server name that is an id, as claude.ai connectors have, is shown as a short connector name. */
+const serverTitle = server => (/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(server) ? `Claude.ai connector ${server.slice(0, 8)}` : server)
+
+/**
+ * One group per MCP server: the servers whose tools a session saw, and the servers in .claude.json that none did.
+ * The first row turns the whole server off with the deny rule `mcp__<server>`; the others turn off one tool.
+ */
+async function mcp(catalog, settings) {
+  const deny = settings.permissions?.deny ?? []
+  const servers = new Map(Object.keys((await readJson(at('.claude.json'), {})).mcpServers ?? {}).map(server => [server, []]))
+  for (const [name, entry] of Object.entries(catalog.tools ?? {})) {
+    if (!entry.mcp) continue
+    const [, server = 'other', ...rest] = name.split('__')
+    if (!servers.has(server)) servers.set(server, [])
+    servers.get(server).push({ name, tool: rest.join('__') || name, description: entry.description ?? '' })
+  }
+  const items = []
+  for (const [server, serverTools] of servers) {
+    const rule = `mcp__${server}`
+    const isServerOn = !deny.includes(rule)
+    const group = serverTitle(server)
+    items.push({
+      title: 'All tools',
+      description: serverTools.length ? `Turns off every tool from ${server} (${serverTools.length}).` : `No session has seen tools from ${server} yet.`,
+      badge: 'server',
+      group,
+      order: 0,
+      value: isServerOn,
+      act: { type: 'deny', rule },
+    })
+    for (const { name, tool, description } of serverTools) {
+      items.push({ title: tool, description, group, order: 1, value: isServerOn && !deny.includes(name), act: { type: 'deny', rule: name } })
+    }
+  }
+  return grouped(items).sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
 }
 
 async function general(settings) {
@@ -279,6 +318,7 @@ async function model() {
     section('agents', 'Subagents', DIRS.agents, 'Subagent types that Claude can start.', agents(catalog)),
     section('commands', 'Commands', DIRS.commands, 'Turned-off commands are hidden and refused.', commands(catalog)),
     section('tools', 'Tools', '', 'Turning a tool off adds it to permissions.deny in settings.json.', tools(catalog, settings)),
+    section('mcp', 'MCP', '', 'Turning a server or tool off adds it to permissions.deny in settings.json.', mcp(catalog, settings), 'No session has seen an MCP server yet.'),
     section('plugins', 'Plugins', 'plugins', 'Plugins and mods load in new sessions, or after /reload-plugins.', plugins(settings)),
     section('hooks', 'Hooks', DIRS.hooks, 'Turned-off settings hooks move to hooks/disabled.', hooks(settings)),
     section('general', 'General', '', 'Settings from settings.json.', general(settings)),

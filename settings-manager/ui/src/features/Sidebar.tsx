@@ -1,4 +1,4 @@
-import { createLucideIcon, FileText, KeyRound, PlugZap, Puzzle, Search, SlidersHorizontal, Sparkles, SquareTerminal, WandSparkles, Wrench, type LucideIcon } from 'lucide-react'
+import { createLucideIcon, FileText, KeyRound, PlugZap, Puzzle, Server, Search, SlidersHorizontal, Sparkles, SquareTerminal, WandSparkles, Wrench, type LucideIcon } from 'lucide-react'
 import { Fragment } from 'react'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
@@ -21,6 +21,7 @@ export const SECTION_ICONS: Record<string, LucideIcon> = {
   agents: Bots,
   commands: SquareTerminal,
   tools: Wrench,
+  mcp: Server,
   plugins: Puzzle,
   hooks: PlugZap,
   general: SlidersHorizontal,
@@ -28,7 +29,7 @@ export const SECTION_ICONS: Record<string, LucideIcon> = {
 }
 
 /** Sections that have a divider after them. */
-const LINE_AFTER = new Set(['tools', 'hooks'])
+const LINE_AFTER = new Set(['mcp', 'hooks'])
 
 type Props = { sections: Section[]; current: string; query: string; onQuery: (query: string) => void; onPick: (id: string) => void }
 
