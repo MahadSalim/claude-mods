@@ -12,6 +12,8 @@ public static class Win {
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+  [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
   [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, int m, IntPtr w, IntPtr l);
   [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int m, IntPtr w, IntPtr l);
@@ -31,14 +33,18 @@ public static class Win {
   static Rect? restore;
   const int MinWidth = 640, MinHeight = 420;
 
+  static bool Is(IntPtr h, string title) {
+    var text = new StringBuilder(256); var cls = new StringBuilder(256);
+    GetWindowText(h, text, 256); GetClassName(h, cls, 256);
+    return IsWindowVisible(h) && !IsIconic(h) && text.ToString() == title && cls.ToString() == "Chrome_WidgetWin_1";
+  }
+
+  /** The foreground window with this title, else the topmost one that is not minimized. */
   public static IntPtr Find(string title) {
-    var found = IntPtr.Zero;
-    EnumWindows((h, l) => {
-      var text = new StringBuilder(256); var cls = new StringBuilder(256);
-      GetWindowText(h, text, 256); GetClassName(h, cls, 256);
-      if (IsWindowVisible(h) && text.ToString() == title && cls.ToString() == "Chrome_WidgetWin_1") { found = h; return false; }
-      return true;
-    }, IntPtr.Zero);
+    var found = GetForegroundWindow();
+    if (Is(found, title)) return found;
+    found = IntPtr.Zero;
+    EnumWindows((h, l) => { if (!Is(h, title)) return true; found = h; return false; }, IntPtr.Zero);
     return found;
   }
 

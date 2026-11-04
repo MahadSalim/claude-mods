@@ -273,20 +273,12 @@ function render() {
   $('main').scrollTop = scroll
 }
 
-/**
- * Redraws the maximize button, and reports the page size to the window helper once the size settles.
- * The helper clips the browser's own title bar from that size, so a size read before the browser
- * finished laying out the window would leave its empty title bar showing above ours.
- */
+/** Redraws the maximize button, and reports the page size to the window helper when the pixel ratio changes. */
 function frame() {
   const isMax = outerWidth >= screen.availWidth && outerHeight >= screen.availHeight
   $('max').title = isMax ? 'Restore' : 'Maximize'
   $('max').innerHTML = `<svg viewBox="0 0 10 10"><path d="${WINDOW_ICONS[isMax ? 'restore' : 'max']}"/></svg>`
-  clearTimeout(frame.timer)
-  frame.timer = setTimeout(() => {
-    const size = `${innerWidth} ${innerHeight} ${devicePixelRatio}`
-    if (frame.size !== size) win(`frame ${(frame.size = size)}`)
-  }, 150)
+  if (frame.ratio !== devicePixelRatio) win(`frame ${innerWidth} ${innerHeight} ${(frame.ratio = devicePixelRatio)}`)
 }
 
 if (document.documentElement.dataset.frameless === 'true') {
@@ -299,9 +291,6 @@ if (document.documentElement.dataset.frameless === 'true') {
     win(e.detail === 2 ? 'max' : 'drag')
   })
   addEventListener('resize', () => requestAnimationFrame(frame))
-  addEventListener('load', frame)
-  // The browser can still change the window after load, so check again once it has settled.
-  setTimeout(() => ((frame.size = undefined), frame()), 1000)
   frame()
 }
 
