@@ -162,12 +162,13 @@ async function promptText($: $, key: string, dir: string, live: string) {
   return live
 }
 
+const appScript = ($: $) => join($.plugin.root, 'app', 'main.mjs')
+
 async function open($: $) {
   await scan($)
   await flush($)
-  const script = join($.plugin.root, 'app', 'main.mjs')
   const result = await $.process
-    .run(['node', script, root], { timeoutMs: 20000 })
+    .run(['node', appScript($), root], { timeoutMs: 20000 })
     .catch((error: unknown) => ({ exitCode: 1, stdout: '', stderr: String(error) }))
   if (result.exitCode === 0) return {}
   return { text: `Settings Manager could not open its window. It needs Node.js on PATH.\n${(result.stderr || result.stdout).trim()}` }
@@ -183,7 +184,10 @@ export const register: Register = on => {
     await refresh($)
     await scan($)
     await $.command.register({ name: COMMAND, description: 'Open the Settings Manager window', immediate: true })
-    return next(e)
+    const started = await next(e)
+    // Starts the tray icon if it is not running yet; the session does not wait for it.
+    void $.process.run(['node', appScript($), root, '--tray'], { timeoutMs: 20000 }).catch(() => {})
+    return started
   })
 
   on('turn.start', async ($, e, next) => {

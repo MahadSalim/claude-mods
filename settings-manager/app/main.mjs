@@ -1,4 +1,5 @@
-// Entry point: `node main.mjs <config folder>` opens the window; `--serve` runs the window's server.
+// Entry point: `node main.mjs <config folder>` starts the server if it is not running and opens the window;
+// `--tray` only starts it (on Windows, with its tray icon); `--serve` runs the server itself.
 import { spawn } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
@@ -13,6 +14,9 @@ const self = fileURLToPath(import.meta.url)
 const [root = join(homedir(), '.claude'), mode] = process.argv.slice(2)
 const at = (...parts) => join(root, ...parts)
 const serverFile = at(DIRS.data, FILES.server)
+const lockFile = at(DIRS.data, 'server.lock')
+const isWindows = process.platform === 'win32'
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 /** Like `at`, for paths that come from the window: throws if the path leaves the config folder. */
 function inside(...parts) {
@@ -463,12 +467,8 @@ function openExternal(target) {
   else detached(process.platform === 'darwin' ? 'open' : 'xdg-open', [target])
 }
 
-/** Opens the page in a WebView2 window on Windows, else in a browser's app mode, which shows it as a window of its own. */
+/** Where there is no tray process, opens the page in a browser's app mode, which shows it as a window of its own. */
 function openWindow(url) {
-  if (process.platform === 'win32') {
-    const [script, icon] = ['./window.ps1', './icon.ico'].map(file => fileURLToPath(new URL(file, import.meta.url)))
-    return void spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, url, icon], { stdio: 'ignore', windowsHide: true }).on('error', () => {}).unref()
-  }
   const env = process.env
   const candidates =
     process.platform === 'win32'
@@ -492,19 +492,68 @@ const isAlive = async info => {
   }
 }
 
-async function launch() {
-  let info = await readJson(serverFile, undefined)
-  if (!info || !(await isAlive(info))) {
-    const child = spawn(process.execPath, [self, root, '--serve'], { detached: true, stdio: 'ignore', windowsHide: true })
-    child.unref()
-    for (let tries = 0; tries < 50 && info?.pid !== child.pid; tries++) {
-      await new Promise(resolve => setTimeout(resolve, 100))
-      info = await readJson(serverFile, undefined)
+/** The running server's info, or undefined. A server from another copy of this script is stopped, so an update takes over. */
+async function running() {
+  const info = await readJson(serverFile, undefined)
+  if (!info || !(await isAlive(info))) return undefined
+  if (info.script === self) return info
+  try {
+    process.kill(info.pid)
+  } catch {}
+  await sleep(300)
+  return undefined
+}
+
+/** Starts the server once: a lock file keeps two sessions that start together from starting two. */
+async function start() {
+  await fs.mkdir(at(DIRS.data), { recursive: true })
+  for (let tries = 0; tries < 150; tries++) {
+    const lock = await fs.open(lockFile, 'wx').catch(error => (error.code === 'EEXIST' ? undefined : Promise.reject(error)))
+    if (lock) {
+      await lock.close()
+      try {
+        const info = await running()
+        if (info) return info
+        const child = spawn(process.execPath, [self, root, '--serve'], { detached: true, stdio: 'ignore', windowsHide: true })
+        child.unref()
+        for (let wait = 0; wait < 100; wait++) {
+          await sleep(100)
+          const info = await readJson(serverFile, undefined)
+          if (info?.pid === child.pid) return info
+        }
+        throw new Error('The window server did not start.')
+      } finally {
+        await fs.rm(lockFile, { force: true })
+      }
     }
-    if (info?.pid !== child.pid) throw new Error('The window server did not start.')
+    const stat = await fs.stat(lockFile).catch(() => undefined)
+    if (stat && Date.now() - stat.mtimeMs > 15000) await fs.rm(lockFile, { force: true })
+    await sleep(100)
+    const info = await running()
+    if (info) return info
   }
+  throw new Error('The window server did not start.')
+}
+
+async function launch(isOpen) {
+  if (!isOpen && !isWindows) return
+  const info = (await running()) ?? (await start())
+  if (!isOpen) return
   const res = await fetch(`http://127.0.0.1:${info.port}/api/open`, { headers: { 'x-token': info.token } })
   if (!res.ok) throw new Error(`The window server could not open the window: ${await res.text()}`)
+}
+
+/** On Windows, the tray process that owns the window. The server ends when it ends. */
+function startTray(url) {
+  const [script, icon] = ['./window.ps1', './icon.ico'].map(file => fileURLToPath(new URL(file, import.meta.url)))
+  const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, url, icon], { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true })
+  child.stdin.on('error', () => {})
+  const stop = async () => {
+    if ((await readJson(serverFile, undefined))?.pid === process.pid) await fs.rm(serverFile, { force: true })
+    process.exit(0)
+  }
+  child.on('error', stop).on('exit', stop)
+  return child
 }
 
 /** Content types of the built UI files in `dist`, by extension. */
@@ -516,6 +565,7 @@ async function serve() {
   const token = randomBytes(16).toString('hex')
   const page = await fs.readFile(new URL('index.html', DIST), 'utf8')
   let lastSeen = Date.now()
+  let tray
   const send = (res, status, body, type = 'text/plain; charset=utf-8') => res.writeHead(status, { 'content-type': type }).end(body)
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost')
@@ -528,7 +578,11 @@ async function serve() {
     try {
       if (url.pathname === '/') return send(res, 200, page, 'text/html; charset=utf-8')
       if (url.pathname === '/api/ping') return send(res, 200, 'ok')
-      if (url.pathname === '/api/open') return openWindow(`http://127.0.0.1:${server.address().port}/?t=${token}`), send(res, 200, 'ok')
+      if (url.pathname === '/api/open') {
+        if (tray) tray.stdin.write('open\n')
+        else openWindow(`http://127.0.0.1:${server.address().port}/?t=${token}`)
+        return send(res, 200, 'ok')
+      }
       if (req.method === 'POST' && url.pathname === '/api/act') {
         let body = ''
         for await (const chunk of req) body += chunk
@@ -542,8 +596,13 @@ async function serve() {
       send(res, 500, String(error?.message ?? error))
     }
   })
-  server.listen(0, '127.0.0.1', () => writeJson(serverFile, { port: server.address().port, token, pid: process.pid }))
-  setInterval(() => Date.now() - lastSeen > 60000 && process.exit(0), 5000)
+  server.listen(0, '127.0.0.1', async () => {
+    const port = server.address().port
+    if (isWindows) tray = startTray(`http://127.0.0.1:${port}/?t=${token}`)
+    await writeJson(serverFile, { port, token, pid: process.pid, script: self })
+  })
+  // Without a tray icon nothing can stop the server, so it stops when the window has been gone a minute.
+  if (!isWindows) setInterval(() => Date.now() - lastSeen > 60000 && process.exit(0), 5000)
 }
 
-await (mode === '--serve' ? serve() : launch())
+await (mode === '--serve' ? serve() : launch(mode !== '--tray'))

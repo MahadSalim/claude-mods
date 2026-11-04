@@ -150,8 +150,10 @@ test('/settings-manager starts the window with the config folder', async ($, on)
   })
   await start($)
 
+  // A session start starts the tray icon without opening the window.
+  expect(runs[0]).toEqual([expect.anything(), expect.anything(), ROOT, '--tray'])
   expect(await $.command.run({ command: 'settings-manager', args: '' })).toEqual({})
-  expect(runs[0]?.[0]).toBe('node')
-  expect(runs[0]?.[1]).toMatch(/app\/main\.mjs$/)
-  expect(runs[0]?.[2]).toBe(ROOT)
+  expect(runs[1]?.[0]).toBe('node')
+  expect(runs[1]?.[1]).toMatch(/app\/main\.mjs$/)
+  expect(runs[1]?.slice(2)).toEqual([ROOT])
 })
