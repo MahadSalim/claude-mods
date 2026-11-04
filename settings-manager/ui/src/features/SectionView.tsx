@@ -3,16 +3,30 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { Group, Item, Section } from '@/types'
+import { ItemControl } from './ItemControl'
 import { ItemRow } from './ItemRow'
-import { matches } from './text'
+import { changeLabel, matches } from './text'
 import type { OnAct } from './useSections'
 
 type RowProps = { onAct: OnAct; onOpen: (item: Item) => void }
 
+/** A group title with a switch for the whole group, and the group's size under it. */
+function GroupToggle({ toggle, onAct }: { toggle: Item; onAct: OnAct }) {
+  return (
+    <div className="mt-9 mb-1 flex items-center gap-6 border-b pb-3">
+      <div className="min-w-0 flex-1">
+        <h2 className="text-[16px] font-semibold [overflow-wrap:anywhere]">{toggle.title}</h2>
+        {toggle.description && <div className="mt-0.5 text-[13px] text-muted-foreground">{toggle.description}</div>}
+      </div>
+      <ItemControl item={toggle} onSet={value => onAct(toggle.act, value, changeLabel(toggle, value))} />
+    </div>
+  )
+}
+
 function Groups({ groups, ...rest }: { groups: Group[] } & RowProps) {
   return groups.map(group => (
     <div key={group.title}>
-      <h2 className="mt-8 mb-1 text-[13px] font-semibold text-muted-foreground">{group.title}</h2>
+      {group.toggle ? <GroupToggle toggle={group.toggle} onAct={rest.onAct} /> : <h2 className="mt-8 mb-1 text-[13px] font-semibold text-muted-foreground">{group.title}</h2>}
       {group.items.map((item, index) => (
         <ItemRow key={`${index}|${item.title}`} item={item} {...rest} />
       ))}
@@ -81,7 +95,13 @@ export function SectionView({ section, lastChange, onUndo, ...rest }: SectionPro
 /** The items of every section that match the search query. */
 export function SearchResults({ sections, query, ...rest }: { sections: Section[]; query: string } & RowProps) {
   const found = sections
-    .map(section => ({ ...section, groups: section.groups.map(group => ({ ...group, items: group.items.filter(item => matches(item, query)) })).filter(group => group.items.length) }))
+    .map(section => ({
+      ...section,
+      // A group whose own switch matches, such as an MCP server found by name, shows with all its rows.
+      groups: section.groups
+        .map(group => (group.toggle && matches(group.toggle, query) ? group : { ...group, items: group.items.filter(item => matches(item, query)) }))
+        .filter(group => group.items.length || (group.toggle && matches(group.toggle, query))),
+    }))
     .filter(section => section.groups.length)
   if (!found.length) return <Empty>Nothing matches your search.</Empty>
   return found.map(section => (

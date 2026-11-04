@@ -28,6 +28,19 @@ const SECTIONS: Section[] = [
     groups: [{ title: 'Model', items: [{ title: 'Model', control: 'select', value: '', options: [{ value: '', label: 'Default' }, { value: 'opus', label: 'opus' }], act: { type: 'setting', key: ['model'] } }] }],
   },
   {
+    id: 'mcp',
+    title: 'MCP',
+    folder: '',
+    note: 'Turning a server or tool off adds it to permissions.deny in settings.json.',
+    groups: [
+      {
+        title: 'atlas-db',
+        toggle: { title: 'atlas-db', description: '1 tool', value: false, act: { type: 'deny', rule: 'mcp__atlas-db' } },
+        items: [{ title: 'execute_sql', value: true, isDisabled: true, act: { type: 'deny', rule: 'mcp__atlas-db__execute_sql' } }],
+      },
+    ],
+  },
+  {
     id: 'env',
     title: 'Environment',
     folder: '',
@@ -84,6 +97,16 @@ test('asks before it drops unsaved edits', async () => {
   await userEvent.type(within(dialog).getByRole('textbox'), '!')
   await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
   expect(within(dialog).getByText('Discard your unsaved changes?')).toBeInTheDocument()
+})
+
+test('an MCP server has one switch beside its name, and its tools cannot change while it is off', async () => {
+  render(<SettingsApp />)
+  await userEvent.click(await screen.findByText('MCP'))
+  expect(screen.getByRole('heading', { name: 'atlas-db' })).toBeInTheDocument()
+  expect(screen.queryByText('All tools')).not.toBeInTheDocument()
+  expect(screen.getByRole('switch', { name: 'execute_sql' })).toBeDisabled()
+  await userEvent.click(screen.getByRole('switch', { name: 'atlas-db' }))
+  await waitFor(() => expect(posts).toEqual([{ path: '/api/act', act: { type: 'deny', rule: 'mcp__atlas-db' }, value: true, label: 'Turn on atlas-db' }]))
 })
 
 test('does not open a row without full text', async () => {

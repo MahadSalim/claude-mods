@@ -30,6 +30,7 @@ export function ItemRow({ item, onAct, onOpen }: Props) {
         // The line under each row lines up with the text, so it stays straight when the row is rounded.
         'after:absolute after:inset-x-3 after:bottom-0 after:h-px after:bg-border last:after:hidden',
         canOpen && 'cursor-pointer rounded-lg outline-none hover:bg-accent/50 focus-visible:bg-accent/50',
+        item.isDisabled && 'opacity-50',
       )}
     >
       <div className="min-w-0 flex-1">

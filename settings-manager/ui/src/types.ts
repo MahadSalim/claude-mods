@@ -17,12 +17,15 @@ export type Item = {
   /** True for a variable whose value the window hides until you click the eye button. */
   isSecret?: boolean
   options?: Option[]
+  /** True for a row whose control cannot change now, such as a tool of an MCP server that is off. */
+  isDisabled?: boolean
   act: Act
   edit?: Edit
   view?: string
 }
 
-export type Group = { title: string; items: Item[] }
+/** A titled list of rows. `toggle` is a switch for the whole group, drawn beside its title, such as an MCP server's. */
+export type Group = { title: string; items: Item[]; toggle?: Item }
 
 export type Section = { id: string; title: string; note: string; folder: string; empty?: string; groups: Group[] }
 

@@ -71,7 +71,7 @@ export function ItemControl({ item, onSet }: Props) {
 
   if (control === 'env') return <EnvControl item={item} onSet={onSet} />
 
-  if (control === 'switch') return <Switch checked={!!item.value} aria-label={item.title} onCheckedChange={set} className="data-[state=checked]:bg-[#4cc2ff] data-[state=checked]:hover:bg-[#47b1e8]" />
+  if (control === 'switch') return <Switch checked={!!item.value} disabled={item.isDisabled} aria-label={item.title} onCheckedChange={set} className="data-[state=checked]:bg-[#4cc2ff] data-[state=checked]:hover:bg-[#47b1e8]" />
 
   if (control === 'segmented')
     return (

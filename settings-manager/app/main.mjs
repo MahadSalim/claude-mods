@@ -237,7 +237,8 @@ const serverTitle = server => (/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(server) ? `Cl
 
 /**
  * One group per MCP server: the servers whose tools a session saw, and the servers in .claude.json that none did.
- * The first row turns the whole server off with the deny rule `mcp__<server>`; the others turn off one tool.
+ * The group's own switch, beside its name, turns the whole server off with the deny rule `mcp__<server>`.
+ * Each row turns off one tool; while the server is off, the rows keep their own state but cannot be changed.
  */
 async function mcp(catalog, settings) {
   const deny = settings.permissions?.deny ?? []
@@ -248,25 +249,16 @@ async function mcp(catalog, settings) {
     if (!servers.has(server)) servers.set(server, [])
     servers.get(server).push({ name, tool: rest.join('__') || name, description: entry.description ?? '' })
   }
-  const items = []
-  for (const [server, serverTools] of servers) {
-    const rule = `mcp__${server}`
-    const isServerOn = !deny.includes(rule)
-    const group = serverTitle(server)
-    items.push({
-      title: 'All tools',
-      description: serverTools.length ? `Turns off every tool from ${server} (${serverTools.length}).` : `No session has seen tools from ${server} yet.`,
-      badge: 'server',
-      group,
-      order: 0,
-      value: isServerOn,
-      act: { type: 'deny', rule },
-    })
-    for (const { name, tool, description } of serverTools) {
-      items.push({ title: tool, description, group, order: 1, value: isServerOn && !deny.includes(name), act: { type: 'deny', rule: name } })
-    }
-  }
-  return grouped(items).sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
+  const groups = [...servers].map(([server, serverTools]) => {
+    const isServerOn = !deny.includes(`mcp__${server}`)
+    const title = serverTitle(server)
+    const items = serverTools
+      .map(({ name, tool, description }) => ({ title: tool, description, value: !deny.includes(name), isDisabled: !isServerOn, act: { type: 'deny', rule: name } }))
+      .sort((a, b) => a.title.localeCompare(b.title))
+    const count = serverTools.length ? `${serverTools.length} ${serverTools.length === 1 ? 'tool' : 'tools'}` : 'No session has seen its tools yet'
+    return { title, items, toggle: { title, description: count, value: isServerOn, act: { type: 'deny', rule: `mcp__${server}` } } }
+  })
+  return groups.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
 }
 
 async function general(settings) {
