@@ -157,7 +157,7 @@ function ContextCard({ context, connectors }: { context: Context; connectors: Re
 type HomeProps = { section: Section; context?: Context; connectors: Record<string, string>; changedAt?: string }
 
 /**
- * The Home tab: the context use of the session counted last. When settings changed after that session started, a
+ * The Home tab: the context use of the session that started last. When settings changed after that session started, a
  * note says that the numbers do not show the change, since only a new session loads it.
  */
 export function HomeView({ section, context, connectors, changedAt }: HomeProps) {

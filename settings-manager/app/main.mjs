@@ -544,7 +544,9 @@ async function contexts() {
   const dir = at(DIRS.context)
   const names = (await fs.readdir(dir).catch(() => [])).filter(name => name.endsWith('.json'))
   const read = await Promise.all(names.map(async name => ({ name, value: await readJson(join(dir, name), undefined) })))
-  const sorted = read.filter(file => file.value?.categories).sort((a, b) => String(b.value.savedAt).localeCompare(String(a.value.savedAt)))
+  // The newest session first, by when it started: an older session that is still in use loaded older settings.
+  const started = file => String(file.value.startedAt ?? file.value.savedAt)
+  const sorted = read.filter(file => file.value?.categories).sort((a, b) => started(b).localeCompare(started(a)))
   await Promise.all(sorted.slice(CONTEXT_KEEP).map(file => fs.rm(join(dir, file.name), { force: true })))
   return sorted.slice(0, CONTEXT_KEEP).map(file => file.value)
 }
@@ -571,7 +573,7 @@ async function model() {
   ])
   const section = async (id, title, folder, note, groups, empty) => ({ id, title, folder, note, empty, groups: await groups })
   return Promise.all([
-    section('home', 'Home', '', 'What takes up the context window of your latest session. Counted after each turn, the same way as /context.', []),
+    section('home', 'Home', '', 'What takes up the context window of the session that you started last. Counted after each turn, the same way as /context.', []),
     section('skills', 'Skills', DIRS.skills, 'Turned-off skills are listed in settings-manager/disabled.json. Changes reach Claude in new sessions.', skills(catalog, disabled, settings)),
     section('prompts', 'System prompt', DIRS.prompts, 'Each section is a file in prompts. Edit a section to change what Claude reads.', prompts(catalog, edits, disabled, summaries)),
     section('agents', 'Subagents', DIRS.agents, 'Subagent types that Claude can start.', agents(catalog, disabled)),
