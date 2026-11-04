@@ -1,18 +1,28 @@
-import { Bot, FileText, Puzzle, Search, SlidersHorizontal, Sparkles, SquareTerminal, Webhook, Wrench, type LucideIcon } from 'lucide-react'
+import { createLucideIcon, FileText, PlugZap, Puzzle, Search, SlidersHorizontal, Sparkles, SquareTerminal, WandSparkles, Wrench, type LucideIcon } from 'lucide-react'
 import { Fragment } from 'react'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import type { Section } from '@/types'
 
+/** Two bots, one behind the other: the subagents that Claude can start. Drawn on Lucide's 24px grid. */
+const Bots = createLucideIcon('bots', [
+  ['path', { d: 'M16 5V2.5', key: 'back-antenna' }],
+  ['path', { d: 'M11 9V7a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-2', key: 'back-head' }],
+  ['path', { d: 'M8 10V7.5', key: 'antenna' }],
+  ['rect', { x: '2', y: '10', width: '13', height: '10', rx: '2', key: 'head' }],
+  ['path', { d: 'M6 14v2', key: 'left-eye' }],
+  ['path', { d: 'M11 14v2', key: 'right-eye' }],
+])
+
 export const SECTION_ICONS: Record<string, LucideIcon> = {
-  skills: Sparkles,
+  skills: WandSparkles,
   prompts: FileText,
-  agents: Bot,
+  agents: Bots,
   commands: SquareTerminal,
   tools: Wrench,
   plugins: Puzzle,
-  hooks: Webhook,
+  hooks: PlugZap,
   general: SlidersHorizontal,
 }
 
