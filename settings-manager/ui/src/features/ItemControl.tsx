@@ -14,7 +14,7 @@ export function ItemControl({ item, onAct }: Props) {
   const control = item.control ?? 'switch'
   const set = (value: Value) => onAct(item.act, value)
 
-  if (control === 'switch') return <Switch checked={!!item.value} aria-label={item.title} onCheckedChange={set} className="data-[state=checked]:bg-blue-600" />
+  if (control === 'switch') return <Switch checked={!!item.value} aria-label={item.title} onCheckedChange={set} className="data-[state=checked]:bg-[#4cc2ff] data-[state=checked]:hover:bg-[#47b1e8]" />
 
   if (control === 'segmented')
     return (
@@ -51,6 +51,7 @@ export function ItemControl({ item, onAct }: Props) {
     <Input
       key={String(item.value ?? '')}
       className="w-56"
+      placeholder="Default"
       aria-label={item.title}
       defaultValue={String(item.value ?? '')}
       onBlur={e => commit(e.target.value)}

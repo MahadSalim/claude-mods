@@ -9,7 +9,7 @@ type RowProps = { onAct: (action: Act, value: Value | null) => void; onOpen: (it
 function Groups({ groups, ...rest }: { groups: Group[] } & RowProps) {
   return groups.map(group => (
     <div key={group.title}>
-      <h2 className="mt-8 mb-0.5 text-[15px] font-semibold">{group.title}</h2>
+      <h2 className="mt-8 mb-1 text-[13px] font-semibold text-muted-foreground">{group.title}</h2>
       {group.items.map((item, index) => (
         <ItemRow key={`${index}|${item.title}`} item={item} {...rest} />
       ))}

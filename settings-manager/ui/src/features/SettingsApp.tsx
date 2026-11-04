@@ -32,7 +32,7 @@ export function SettingsApp() {
           onPick={id => (setQuery(''), setCurrent(id), toTop())}
         />
         <main ref={main} className="flex-1 overflow-y-auto px-8 pt-5.5 pb-15">
-          <div className="mx-auto max-w-[880px]">
+          <div key={search ? 'search' : section?.id} className="mx-auto max-w-[880px] animate-in duration-150 fade-in">
             {search ? <SearchResults sections={sections} query={search} {...rowProps} /> : section && <SectionView section={section} {...rowProps} />}
           </div>
         </main>

@@ -24,7 +24,7 @@ type Props = { sections: Section[]; current: string; query: string; onQuery: (qu
 /** The search field and the list of sections. */
 export function Sidebar({ sections, current, query, onQuery, onPick }: Props) {
   return (
-    <aside className="w-[250px] flex-none overflow-y-auto border-r px-3 py-3.5">
+    <aside className="w-[250px] flex-none overflow-y-auto border-r bg-sidebar px-3 py-3.5">
       <label className="relative mb-3 block">
         <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input autoFocus placeholder="Search" value={query} onChange={e => onQuery(e.target.value)} className="pl-8" />

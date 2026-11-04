@@ -25,7 +25,9 @@ export function ItemRow({ item, onAct, onOpen }: Props) {
       onClick={() => canOpen && onOpen(item)}
       onKeyDown={e => canOpen && e.key === 'Enter' && e.target === e.currentTarget && onOpen(item)}
       className={cn(
-        '-mx-3 flex items-center gap-6 border-b px-3 py-3 last:border-b-0',
+        'relative -mx-3 flex items-center gap-6 px-3 py-3',
+        // The line under each row lines up with the text, so it stays straight when the row is rounded.
+        'after:absolute after:inset-x-3 after:bottom-0 after:h-px after:bg-border last:after:hidden',
         canOpen && 'cursor-pointer rounded-lg outline-none hover:bg-accent/50 focus-visible:bg-accent/50',
       )}
     >
