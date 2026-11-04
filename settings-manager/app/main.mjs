@@ -99,22 +99,23 @@ async function files(dir, group, describe) {
 }
 
 /** Edit info for a prompt file; `key` names its original text in the prompt defaults. */
-function editable(defaults, key, path, text) {
-  const isEdited = defaults[key] !== undefined && text !== defaults[key]
+/** Edit info for a prompt file. Only an edit made in the window counts, as `prompt-edits.json` records it. */
+function editable(edits, key, path, text) {
+  const isEdited = Object.hasOwn(edits, key)
   return { isEdited, edit: { path, text, key, isEdited } }
 }
 
-async function prompts(catalog, defaults) {
+async function prompts(catalog, edits) {
   const idOf = base => Object.keys(catalog.sections ?? {}).find(id => fileName(id) === base) ?? base
   const sections = await files(DIRS.prompts, 'Sections', (base, text, from) => {
     const id = idOf(base)
-    const { isEdited, edit } = editable(defaults, base, join(from, `${base}.md`), text)
+    const { isEdited, edit } = editable(edits, base, join(from, `${base}.md`), text)
     return { title: id, description: firstLine(text), badge: catalog.sections?.[id]?.scope, isEdited, order: catalog.sections?.[id]?.order ?? 999, edit }
   })
   const reminders = await files(DIRS.reminders, 'Reminders', (base, text, from) => ({
     title: base,
     description: firstLine(text),
-    ...editable(defaults, `${DIRS.reminders}/${base}`, join(from, `${base}.md`), text),
+    ...editable(edits, `${DIRS.reminders}/${base}`, join(from, `${base}.md`), text),
   }))
   return grouped([...sections, ...reminders], ['Sections', 'Reminders'])
 }
@@ -306,15 +307,15 @@ function env(settings) {
 }
 
 async function model() {
-  const [settings, catalog, defaults] = await Promise.all([
+  const [settings, catalog, edits] = await Promise.all([
     readJson(at('settings.json'), {}),
     readJson(at(DIRS.data, FILES.catalog), {}),
-    readJson(at(DIRS.data, FILES.defaults), {}),
+    readJson(at(DIRS.data, FILES.edits), {}),
   ])
   const section = async (id, title, folder, note, groups, empty) => ({ id, title, folder, note, empty, groups: await groups })
   return Promise.all([
     section('skills', 'Skills', DIRS.skills, 'Turned-off skills move to skills/disabled. Changes reach Claude in new sessions.', skills(catalog)),
-    section('prompts', 'System prompt', DIRS.prompts, 'Each section is a file in prompts. Edit a section to change what Claude reads.', prompts(catalog, defaults)),
+    section('prompts', 'System prompt', DIRS.prompts, 'Each section is a file in prompts. Edit a section to change what Claude reads.', prompts(catalog, edits)),
     section('agents', 'Subagents', DIRS.agents, 'Subagent types that Claude can start.', agents(catalog)),
     section('commands', 'Commands', DIRS.commands, 'Turned-off commands are hidden and refused.', commands(catalog)),
     section('tools', 'Tools', '', 'Turning a tool off adds it to permissions.deny in settings.json.', tools(catalog, settings)),
@@ -395,6 +396,18 @@ async function write(change, path, text) {
   await fs.writeFile(path, text)
 }
 
+/**
+ * Records in `prompt-edits.json` that the person edited a prompt file in the window, or removes the record.
+ * The mod gives Claude a file's text in place of Claude Code's own only while this record exists.
+ */
+async function markEdited(change, key, isEdited) {
+  const path = at(DIRS.data, FILES.edits)
+  const edits = await readJson(path, {})
+  if (isEdited) edits[key] = { editedAt: new Date().toISOString() }
+  else delete edits[key]
+  await write(change, path, JSON.stringify(edits, null, 2) + '\n')
+}
+
 /** Reads settings.json, applies `edit` and writes it back. A file with a JSON error is left as it is. */
 async function editSettings(change, edit) {
   const file = at('settings.json')
@@ -471,14 +484,16 @@ const ACTIONS = {
     })
     await writeJson(saved, { event, group })
   },
-  async edit({ path, text }, _value, change) {
+  async edit({ path, text, key }, _value, change) {
     await write(change, inside(path), text)
+    if (typeof key === 'string') await markEdited(change, key, true)
   },
   async reset({ path, key }, _value, change) {
     const target = inside(path)
     const defaults = await readJson(at(DIRS.data, FILES.defaults), {})
     if (defaults[key] === undefined) throw new Error(`No original text is saved for ${key} yet.`)
     await write(change, target, defaults[key])
+    await markEdited(change, key, false)
   },
   async reveal({ folder }) {
     const target = (folder ? inside(folder) : at()).replace(/\//g, process.platform === 'win32' ? '\\' : '/')

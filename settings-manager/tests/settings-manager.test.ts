@@ -2,6 +2,8 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 const ROOT = 'C:/cfg'
+/** Where the window records the prompt files that the person edited. */
+const EDITS = `${ROOT}/settings-manager/prompt-edits.json`
 const LISTING = [
   'The following skills are available:',
   '- my-skill: Mine.',
@@ -78,6 +80,7 @@ test('system prompt sections follow their files', async ($, on) => {
     [`${ROOT}/prompts/disabled/tone.md`]: 'old tone',
     [`${ROOT}/prompts/tools.md`]: 'my own tools text',
     [`${ROOT}/settings-manager/prompt-defaults.json`]: JSON.stringify({ tools: 'core tools v1' }),
+    [EDITS]: JSON.stringify({ tools: {} }),
   })
   on('prompt.compose', () => ({
     sections: [
@@ -102,9 +105,11 @@ test('originals follow Claude while edits win, and a reset file follows Claude a
     [`${ROOT}/prompts/tools.md`]: 'my own tools text',
     [`${ROOT}/prompts/reminders/auto_mode.md`]: 'my auto mode text',
     [`${ROOT}/settings-manager/prompt-defaults.json`]: JSON.stringify({ tools: 'core tools v1', 'prompts/reminders/auto_mode': 'Auto mode is on.' }),
+    [EDITS]: JSON.stringify({ tools: {}, 'prompts/reminders/auto_mode': {} }),
   })
   on('prompt.compose', () => ({ sections: [{ id: 'tools', text: live, scope: 'shared' as const }] }))
   on('prompt.attachment', ($, e) => ({ text: e.text }))
+  on('turn.start', ($, e) => ({ turnId: e.turnId }))
   await start($)
   const compose = async () => (await $.prompt.compose(COMPOSE)).sections[0]?.text
   const originals = () => JSON.parse(files.get(`${ROOT}/settings-manager/prompt-defaults.json`)!)
@@ -114,10 +119,77 @@ test('originals follow Claude while edits win, and a reset file follows Claude a
   await clock.advance(2000)
   expect(originals()).toMatchObject({ tools: 'core tools v2', 'prompts/reminders/auto_mode': 'Auto mode is on.' })
 
+  // A reset in the window writes the original back and removes the edit record.
   files.set(`${ROOT}/prompts/tools.md`, originals().tools)
+  files.set(EDITS, JSON.stringify({ 'prompts/reminders/auto_mode': {} }))
+  await $.turn.start({ text: '', turnId: 't1' })
   live = 'core tools v3'
   expect(await compose()).toBe('core tools v3')
   expect(files.get(`${ROOT}/prompts/tools.md`)).toBe('core tools v3')
+})
+
+test('a file that differs from the live text without an edit record is not used', async ($, on) => {
+  // Another session wrote its own text to the file, and this session's stored original is older.
+  const { files } = session(on, {
+    [`${ROOT}/prompts/tools.md`]: 'text from another session',
+    [`${ROOT}/prompts/reminders/auto_mode.md`]: 'Auto mode text from another session.',
+    [`${ROOT}/settings-manager/prompt-defaults.json`]: JSON.stringify({ tools: 'core tools v1', 'prompts/reminders/auto_mode': 'Auto mode v1.' }),
+  })
+  on('prompt.compose', () => ({ sections: [{ id: 'tools', text: 'core tools v2', scope: 'shared' as const }] }))
+  on('prompt.attachment', ($, e) => ({ text: e.text }))
+  await start($)
+
+  expect((await $.prompt.compose(COMPOSE)).sections[0]?.text).toBe('core tools v2')
+  expect(await $.prompt.attachment({ type: 'auto_mode', text: 'Auto mode v2.', origin: ENGINE })).toEqual({ text: 'Auto mode v2.' })
+  expect(files.get(`${ROOT}/prompts/tools.md`)).toBe('core tools v2')
+})
+
+test('messages sent mid-turn reach Claude as they are, and are never saved or replaced', async ($, on) => {
+  const queued = (words: string) => `The user sent a new message while you were working:\n${words}\n\nAddress the message above.`
+  const OLD = queued('I made this change yesterday.')
+  // The state that the old code left behind: another session's message saved as the reminder's text,
+  // marked as edited and turned off in every way the mod knows.
+  const { files } = session(on, {
+    [`${ROOT}/prompts/reminders/queued_command.md`]: OLD,
+    [`${ROOT}/prompts/reminders/disabled/file.md`]: 'sample',
+    [`${ROOT}/settings-manager/prompt-defaults.json`]: JSON.stringify({ 'prompts/reminders/queued_command': queued('Something else.') }),
+    [EDITS]: JSON.stringify({ 'prompts/reminders/queued_command': {} }),
+  })
+  on('prompt.attachment', ($, e) => ({ text: e.text }))
+  await start($)
+
+  for (const words of ['Push it when you are done.', 'Also add a test.']) {
+    expect(await $.prompt.attachment({ type: 'queued_command', text: queued(words), origin: ENGINE })).toEqual({ text: queued(words) })
+  }
+  expect(files.get(`${ROOT}/prompts/reminders/queued_command.md`)).toBe(OLD)
+  expect([...files.values()].some(text => text.includes('Push it when you are done.'))).toBe(false)
+})
+
+test('file contents can be turned off, but are never saved or replaced', async ($, on) => {
+  const { files } = session(on, {
+    [`${ROOT}/prompts/reminders/disabled/edited_text_file.md`]: 'Turned off.',
+    [`${ROOT}/prompts/reminders/file.md`]: 'contents from another session',
+    [EDITS]: JSON.stringify({ 'prompts/reminders/file': {} }),
+  })
+  on('prompt.attachment', ($, e) => ({ text: e.text }))
+  await start($)
+
+  expect(await $.prompt.attachment({ type: 'edited_text_file', text: 'a.ts changed', origin: ENGINE })).toEqual({ text: null })
+  expect(await $.prompt.attachment({ type: 'file', text: 'contents of a.ts', origin: ENGINE })).toEqual({ text: 'contents of a.ts' })
+  expect([...files.values()].some(text => text.includes('contents of a.ts'))).toBe(false)
+})
+
+test('text that a hook or a plugin attached is passed on as it is', async ($, on) => {
+  const { files } = session(on, {
+    [`${ROOT}/prompts/reminders/hook_additional_context.md`]: 'replaced',
+    [EDITS]: JSON.stringify({ 'prompts/reminders/hook_additional_context': {} }),
+  })
+  on('prompt.attachment', ($, e) => ({ text: e.text }))
+  await start($)
+
+  const origin = { kind: 'hook' as const, event: 'UserPromptSubmit' }
+  expect(await $.prompt.attachment({ type: 'hook_additional_context', text: 'from my hook', origin })).toEqual({ text: 'from my hook' })
+  expect(files.get(`${ROOT}/prompts/reminders/hook_additional_context.md`)).toBe('replaced')
 })
 
 test('turned-off subagents, reminders and commands are withheld', async ($, on) => {

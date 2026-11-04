@@ -19,6 +19,8 @@ Run `/settings-manager` to open the window. The window needs Node.js on PATH. On
 | General | Model, effort, output style, permission mode and other keys in `settings.json`. |
 | Environment | `env` in `settings.json`. Values of names such as `API_KEY` or `GITHUB_TOKEN` are hidden until you click the eye button. |
 
+An edit counts only when you make it in the window, which records it in `.claude/settings-manager/prompt-edits.json`. Without that record, Claude reads Claude Code's own text, and the mod writes that text to the file. Messages that you send while Claude works always reach Claude unchanged, and the mod never saves them. Reminders that carry file contents can be turned off, but the mod never saves or edits their text.
+
 The mod keeps Claude Code's original text for each section and reminder in `.claude/settings-manager/prompt-defaults.json`, and updates it when Claude Code's text changes. The mod writes `.claude/settings-manager/catalog.json` with the items that it sees in sessions. The window reads it, so start a session with the mod loaded before you open the window.
 
 Most changes reach Claude in new sessions.

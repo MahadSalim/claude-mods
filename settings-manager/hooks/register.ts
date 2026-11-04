@@ -11,6 +11,8 @@ const COMMAND = 'settings-manager'
 let root = ''
 let catalog = blankCatalog()
 let defaults: Record<string, string> = {}
+/** The prompt files that the person edited in the window, by key; read from disk at each refresh. */
+let edits: Record<string, { editedAt?: string }> = {}
 let isFlushPending = false
 const known = { skills: new Set<string>() }
 const off = {
@@ -61,6 +63,7 @@ async function names($: $, dir: string, kind: 'dir' | 'file') {
 async function refresh($: $) {
   const fileBases = async (dir: string) =>
     (await entries($, dir)).filter(item => item.kind === 'file' && item.name.endsWith('.md')).map(item => item.name.slice(0, -3))
+  edits = await readJson($, at(DIRS.data, FILES.edits), {})
   const [onSkills, offSkills, offSections, offReminders, offAgents, offCommands] = await Promise.all([
     names($, DIRS.skills, 'dir'),
     names($, join(DIRS.skills, DISABLED), 'dir'),
@@ -146,21 +149,29 @@ async function noteSkills($: $, seen: { name: string; description: string }[]) {
 }
 
 /**
- * The text Claude reads for a prompt file: the person's edited file, else the live text, kept in the file.
- * The live text is always stored as the original under `key` in the prompt defaults.
+ * The text Claude reads for a prompt file: the file's text when the person edited it in the window,
+ * as `prompt-edits.json` records, else the live text, which the file then shows.
+ *
+ * A file that only differs from the live text is not an edit: another session may have written it
+ * with its own text. The live text is always stored as the original under `key` in the prompt defaults.
  */
 async function promptText($: $, key: string, dir: string, live: string) {
   const path = at(dir, `${key.split('/').at(-1)}.md`)
-  const saved = await $.fs.read(path).then(unixLines, () => undefined)
-  const original = defaults[key]
-  if (original !== live) {
+  if (defaults[key] !== live) {
     defaults[key] = live
     scheduleFlush($)
   }
-  if (saved !== undefined && saved !== original) return saved
+  const saved = await $.fs.read(path).then(unixLines, () => undefined)
+  if (saved !== undefined && Object.hasOwn(edits, key)) return saved
   if (saved !== live) await $.fs.write(path, live)
   return live
 }
+
+/** Attachments that carry the person's own words: the mod passes them on as they are, and never saves, edits or drops them. */
+const PERSONS_WORDS = new Set(['queued_command'])
+
+/** Attachments that carry the contents of files: they can be turned off, but the mod never saves or edits their text. */
+const FILE_CONTENTS = new Set(['file', 'edited_text_file', 'nested_memory'])
 
 const appScript = ($: $) => join($.plugin.root, 'app', 'main.mjs')
 
@@ -215,10 +226,12 @@ export const register: Register = on => {
       await noteSkills($, seen)
       return { text }
     }
+    // Only Claude Code's own text can be edited or turned off; the person's words and other authors' text pass as they are.
+    if (PERSONS_WORDS.has(e.type) || e.origin?.kind !== 'engine') return next(e)
     const file = fileName(e.type)
     if (off.reminders.has(file)) return { text: null }
     const result = await next(e)
-    if (result.text === null) return result
+    if (result.text === null || FILE_CONTENTS.has(e.type)) return result
     note($, 'reminders', e.type, { description: brief(result.text) })
     return { text: await promptText($, `${DIRS.reminders}/${file}`, DIRS.reminders, unixLines(result.text)) }
   })

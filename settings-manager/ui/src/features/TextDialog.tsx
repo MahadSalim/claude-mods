@@ -42,7 +42,7 @@ export function TextDialog({ item: openItem, onAct, onClose }: Props) {
     onClose()
   }
   const save = () => {
-    if (item?.edit) onAct({ type: 'edit', path: item.edit.path, text: draft }, null, `Edit ${item.title}`)
+    if (item?.edit) onAct({ type: 'edit', path: item.edit.path, text: draft, ...(item.edit.key && { key: item.edit.key }) }, null, `Edit ${item.title}`)
     close(true)
   }
   const confirm = () => {

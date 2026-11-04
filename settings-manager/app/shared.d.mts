@@ -8,7 +8,7 @@ export declare const DIRS: {
   data: string
 }
 export declare const DISABLED: string
-export declare const FILES: { catalog: string; defaults: string; server: string }
+export declare const FILES: { catalog: string; defaults: string; edits: string; server: string; history: string }
 export declare function fileName(id: string): string
 export declare function frontmatter(text: string): { name?: string; description?: string }
 export declare function join(...parts: string[]): string
