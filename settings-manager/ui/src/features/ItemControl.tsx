@@ -2,6 +2,7 @@ import { Eye, EyeOff, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
@@ -29,17 +30,33 @@ function TextField({ item, onSet, isHidden, className = 'w-56', placeholder = 'D
   )
 }
 
-/** An environment variable: its value, an eye button for secret values, and a delete button. */
+/** An environment variable: its value and a delete button. A secret value is hidden; an eye button inside the field shows it, on hover. */
 function EnvControl({ item, onSet }: Props) {
   const [isShown, setIsShown] = useState(false)
+  const label = isShown ? `Hide ${item.title}` : `Show ${item.title}`
   return (
     <>
-      {item.isSecret && (
-        <Button variant="ghost" size="icon" title={isShown ? 'Hide value' : 'Show value'} aria-label={isShown ? `Hide ${item.title}` : `Show ${item.title}`} onClick={() => setIsShown(!isShown)}>
-          {isShown ? <EyeOff /> : <Eye />}
-        </Button>
-      )}
-      <TextField item={item} onSet={onSet} isHidden={item.isSecret && !isShown} placeholder="Empty" className="w-72 font-mono text-[13px] md:text-[13px]" />
+      <div className="group relative">
+        <TextField
+          item={item}
+          onSet={onSet}
+          isHidden={item.isSecret && !isShown}
+          placeholder="Empty"
+          className={cn('w-72 font-mono text-[13px] md:text-[13px]', item.isSecret && 'pr-9')}
+        />
+        {item.isSecret && (
+          <button
+            type="button"
+            title={isShown ? 'Hide value' : 'Show value'}
+            aria-label={label}
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => setIsShown(!isShown)}
+            className="absolute inset-y-0 right-0 grid w-9 place-items-center rounded-r-md text-muted-foreground opacity-0 transition-opacity outline-none group-focus-within:opacity-100 group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100 [&_svg]:size-4"
+          >
+            {isShown ? <EyeOff /> : <Eye />}
+          </button>
+        )}
+      </div>
       <Button variant="ghost" size="icon" title="Delete" aria-label={`Delete ${item.title}`} className="text-muted-foreground hover:text-destructive" onClick={() => onSet(null)}>
         <Trash2 />
       </Button>
