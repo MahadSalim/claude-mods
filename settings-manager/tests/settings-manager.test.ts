@@ -4,6 +4,8 @@ import type { On } from 'claude-code'
 const ROOT = 'C:/cfg'
 /** Where the window records the prompt files that the person edited. */
 const EDITS = `${ROOT}/settings-manager/prompt-edits.json`
+/** What is turned off, by name. */
+const DISABLED = `${ROOT}/settings-manager/disabled.json`
 const LISTING = [
   'The following skills are available:',
   '- my-skill: Mine.',
@@ -49,6 +51,7 @@ function session(on: On, files: Record<string, string> = {}) {
   on('command.register', () => ({ value: undefined }))
   on('command.list', () => ({ value: [{ name: 'compact', description: 'Compact', source: 'builtin' as const }] }))
   on('tool.list', () => ({ value: [{ name: 'Bash', description: 'Run a command', mcp: false }] }))
+  on('turn.start', ($, e) => ({ turnId: e.turnId }))
   return { files: disk(on, files), clock }
 }
 
@@ -57,10 +60,13 @@ const ENGINE = { kind: 'engine' as const }
 
 const start = ($: Parameters<Parameters<typeof test>[1]>[0]) => $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' })
 
-test('turned-off skills leave the listing and the Skill tool, and other skills get a folder', async ($, on) => {
-  const { files } = session(on, {
+test('skills in disabled.json leave the listing and the Skill tool, and no skill gets a folder', async ($, on) => {
+  const { files, clock } = session(on, {
     [`${ROOT}/skills/my-skill/SKILL.md`]: '---\nname: my-skill\n---\n',
-    [`${ROOT}/skills/disabled/old-skill/SKILL.md`]: '---\nname: old-skill\n---\n',
+    [`${ROOT}/skills/old-skill/SKILL.md`]: '---\nname: old-skill\n---\n',
+    [DISABLED]: JSON.stringify({ skills: ['old-skill'] }),
+    // An older version noted a synced skill as yours.
+    [`${ROOT}/settings-manager/catalog.json`]: JSON.stringify({ skills: { 'anthropic-skills:pdf': { source: 'userSettings' } } }),
   })
   on('prompt.attachment', ($, e) => ({ text: e.text }))
   on('tool.call', () => ({ result: 'ran' }))
@@ -68,16 +74,28 @@ test('turned-off skills leave the listing and the Skill tool, and other skills g
 
   const listing = await $.prompt.attachment({ type: 'skill_listing', text: LISTING, origin: { kind: 'engine' } })
   expect(listing.text).toBe(LISTING.replace('- old-skill: Turned off.\n', ''))
-  expect(JSON.parse(files.get(`${ROOT}/skills/anthropic-skills__pdf/skill.json`)!)).toMatchObject({ name: 'anthropic-skills:pdf', source: 'syncedSkills' })
-  expect(files.has(`${ROOT}/skills/my-skill/skill.json`)).toBe(false)
+  expect([...files.keys()].filter(path => path.endsWith('skill.json'))).toEqual([])
+  await clock.advance(2000)
+  expect(JSON.parse(files.get(`${ROOT}/settings-manager/catalog.json`)!).skills).toMatchObject({
+    'my-skill': { source: 'userSettings' },
+    'anthropic-skills:pdf': { source: 'syncedSkills' },
+  })
 
   expect(await $.tool.call({ tool: 'Skill', skill: 'old-skill' })).toMatchObject({ deny: expect.stringMatching(/turned off/) })
   expect(await $.tool.call({ tool: 'Skill', skill: 'my-skill' })).toMatchObject({ result: 'ran' })
 })
 
+test('a disabled.json that is not valid JSON turns nothing off', async ($, on) => {
+  session(on, { [DISABLED]: '{ not json' })
+  on('prompt.attachment', ($, e) => ({ text: e.text }))
+  await start($)
+
+  expect((await $.prompt.attachment({ type: 'skill_listing', text: LISTING, origin: ENGINE })).text).toBe(LISTING)
+})
+
 test('system prompt sections follow their files', async ($, on) => {
   const { files } = session(on, {
-    [`${ROOT}/prompts/disabled/tone.md`]: 'old tone',
+    [DISABLED]: JSON.stringify({ sections: ['tone'] }),
     [`${ROOT}/prompts/tools.md`]: 'my own tools text',
     [`${ROOT}/settings-manager/prompt-defaults.json`]: JSON.stringify({ tools: 'core tools v1' }),
     [EDITS]: JSON.stringify({ tools: {} }),
@@ -109,7 +127,6 @@ test('originals follow Claude while edits win, and a reset file follows Claude a
   })
   on('prompt.compose', () => ({ sections: [{ id: 'tools', text: live, scope: 'shared' as const }] }))
   on('prompt.attachment', ($, e) => ({ text: e.text }))
-  on('turn.start', ($, e) => ({ turnId: e.turnId }))
   await start($)
   const compose = async () => (await $.prompt.compose(COMPOSE)).sections[0]?.text
   const originals = () => JSON.parse(files.get(`${ROOT}/settings-manager/prompt-defaults.json`)!)
@@ -151,7 +168,8 @@ test('messages sent mid-turn reach Claude as they are, and are never saved or re
   // marked as edited and turned off in every way the mod knows.
   const { files } = session(on, {
     [`${ROOT}/prompts/reminders/queued_command.md`]: OLD,
-    [`${ROOT}/prompts/reminders/disabled/file.md`]: 'sample',
+    // Turning off the person's messages is refused: they still reach Claude.
+    [DISABLED]: JSON.stringify({ reminders: ['queued_command'] }),
     [`${ROOT}/settings-manager/prompt-defaults.json`]: JSON.stringify({ 'prompts/reminders/queued_command': queued('Something else.') }),
     [EDITS]: JSON.stringify({ 'prompts/reminders/queued_command': {} }),
   })
@@ -167,7 +185,7 @@ test('messages sent mid-turn reach Claude as they are, and are never saved or re
 
 test('file contents can be turned off, but are never saved or replaced', async ($, on) => {
   const { files } = session(on, {
-    [`${ROOT}/prompts/reminders/disabled/edited_text_file.md`]: 'Turned off.',
+    [DISABLED]: JSON.stringify({ reminders: ['edited_text_file'] }),
     [`${ROOT}/prompts/reminders/file.md`]: 'contents from another session',
     [EDITS]: JSON.stringify({ 'prompts/reminders/file': {} }),
   })
@@ -190,13 +208,16 @@ test('text that a hook or a plugin attached is passed on as it is', async ($, on
   const origin = { kind: 'hook' as const, event: 'UserPromptSubmit' }
   expect(await $.prompt.attachment({ type: 'hook_additional_context', text: 'from my hook', origin })).toEqual({ text: 'from my hook' })
   expect(files.get(`${ROOT}/prompts/reminders/hook_additional_context.md`)).toBe('replaced')
+
+  // Turning that text off still works.
+  files.set(DISABLED, JSON.stringify({ reminders: ['hook_additional_context'] }))
+  await $.turn.start({ text: '', turnId: 't1' })
+  expect(await $.prompt.attachment({ type: 'hook_additional_context', text: 'from my hook', origin })).toEqual({ text: null })
 })
 
 test('turned-off subagents, reminders and commands are withheld', async ($, on) => {
   const { files } = session(on, {
-    [`${ROOT}/agents/disabled/Plan.json`]: JSON.stringify({ name: 'Plan' }),
-    [`${ROOT}/prompts/reminders/disabled/todo_reminder.md`]: 'sample',
-    [`${ROOT}/commands/disabled/compact.json`]: JSON.stringify({ name: 'compact' }),
+    [DISABLED]: JSON.stringify({ agents: ['Plan'], reminders: ['todo_reminder'], commands: ['compact'] }),
   })
   const provider = { plugin: 'engine', tier: 'core' as const }
   on('agent.offer', () => ({ isOffered: true }))

@@ -9,11 +9,36 @@ export const DIRS = {
   data: 'settings-manager',
 }
 
-/** Name of the subfolder that holds turned-off items. */
+/** Name of the subfolder that held turned-off items before `disabled.json`; the window moves what is left into the file. */
 export const DISABLED = 'disabled'
 
 /** Files that the mod and the window both read, under `DIRS.data`. */
-export const FILES = { catalog: 'catalog.json', defaults: 'prompt-defaults.json', edits: 'prompt-edits.json', server: 'server.json', history: 'history.json' }
+export const FILES = {
+  catalog: 'catalog.json',
+  defaults: 'prompt-defaults.json',
+  edits: 'prompt-edits.json',
+  disabled: 'disabled.json',
+  server: 'server.json',
+  history: 'history.json',
+}
+
+/** The kinds that `disabled.json` lists by name: skill names, section ids, reminder types, subagent and command names. */
+export const DISABLED_KINDS = ['skills', 'sections', 'reminders', 'agents', 'commands']
+
+/**
+ * Reads `disabled.json` text into a complete value: a list of names for each kind, and the turned-off
+ * settings hooks by id. Text that is missing or not valid JSON gives empty lists.
+ */
+export function parseDisabled(text) {
+  let raw = {}
+  try {
+    raw = JSON.parse(text ?? '{}') ?? {}
+  } catch {}
+  const out = {}
+  for (const kind of DISABLED_KINDS) out[kind] = Array.isArray(raw[kind]) ? raw[kind].filter(name => typeof name === 'string') : []
+  out.hooks = raw.hooks && typeof raw.hooks === 'object' && !Array.isArray(raw.hooks) ? raw.hooks : {}
+  return out
+}
 
 /** Turns an id into a file or folder name that every file system accepts. */
 export const fileName = id => id.replace(/:/g, '__').replace(/[<>"/\\|?*\x00-\x1f]/g, '_')

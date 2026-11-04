@@ -8,16 +8,18 @@ Run `/settings-manager` to open the window. The window needs Node.js on PATH. On
 
 | Section | Where the state lives |
 | --- | --- |
-| Skills | Every skill has a folder in `.claude/skills/<name>/`. A turned-off skill moves to `.claude/skills/disabled/<name>/`. Built-in, synced and plugin skills get a folder that holds `skill.json`. |
-| System prompt | Each section is a file in `.claude/prompts/<id>.md`. A turned-off section moves to `.claude/prompts/disabled/`. Claude reads your edited text. Reset to default undoes an edit. |
-| Reminders | Each reminder type is a file in `.claude/prompts/reminders/`. A turned-off reminder moves to `.claude/prompts/reminders/disabled/`. Claude reads your edited text. Reset to default undoes an edit. |
-| Subagents | Your agent files move to `.claude/agents/disabled/`. Other agent types get a marker file there. |
-| Commands | A turned-off command gets a marker file in `.claude/commands/disabled/`. It is hidden and refused. |
+| Skills | `skills` in `disabled.json`. A turned-off skill leaves the skill list, and the Skill tool refuses it. |
+| System prompt | `sections` in `disabled.json`. Each section is a file in `.claude/prompts/<id>.md`. Claude reads your edited text. Reset to default undoes an edit. |
+| Reminders | `reminders` in `disabled.json`. Each reminder type is a file in `.claude/prompts/reminders/`. Claude reads your edited text. Reset to default undoes an edit. |
+| Subagents | `agents` in `disabled.json`. Claude is not offered a turned-off subagent. |
+| Commands | `commands` in `disabled.json`. A turned-off command is hidden and refused. |
 | Tools | A turned-off tool is added to `permissions.deny` in `settings.json`. |
 | Plugins | `enabledPlugins` in `settings.json`. |
-| Hooks | A turned-off settings hook moves from `settings.json` to `.claude/hooks/disabled/<id>.json`. |
+| Hooks | A turned-off settings hook moves from `settings.json` to `hooks` in `disabled.json`, which keeps it to turn back on. |
 | General | Model, effort, output style, permission mode and other keys in `settings.json`. |
 | Environment | `env` in `settings.json`. Values of names such as `API_KEY` or `GITHUB_TOKEN` are hidden until you click the eye button. |
+
+`disabled.json` is `.claude/settings-manager/disabled.json`. It lists what is turned off by name, one list for each kind. Claude Code still loads a turned-off skill, subagent or command, and the mod keeps it from Claude. So without the mod, everything is on again. Older versions moved turned-off items into `disabled` folders. The window moves that state into `disabled.json` when it starts, and puts your own files back.
 
 An edit counts only when you make it in the window, which records it in `.claude/settings-manager/prompt-edits.json`. Without that record, Claude reads Claude Code's own text, and the mod writes that text to the file. Messages that you send while Claude works always reach Claude unchanged, and the mod never saves them. Reminders that carry file contents can be turned off, but the mod never saves or edits their text.
 
@@ -53,5 +55,6 @@ npm run build
 
 ```
 claude plugin test settings-manager
+node --test settings-manager/tests/migrate.test.mjs
 cd ui && npm test
 ```

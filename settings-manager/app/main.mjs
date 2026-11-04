@@ -1,5 +1,6 @@
 // Entry point: `node main.mjs <config folder>` starts the server if it is not running and opens the window;
-// `--tray` only starts it (on Windows, with its tray icon); `--serve` runs the server itself.
+// `--tray` only starts it (on Windows, with its tray icon); `--serve` runs the server itself;
+// `--migrate` moves the old `disabled` folders into disabled.json and exits.
 import { spawn } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
@@ -8,7 +9,7 @@ import { createServer } from 'node:http'
 import { homedir } from 'node:os'
 import nodePath from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { DIRS, DISABLED, FILES, fileName, frontmatter, join } from './shared.mjs'
+import { DIRS, DISABLED, DISABLED_KINDS, FILES, fileName, frontmatter, join, parseDisabled } from './shared.mjs'
 
 const self = fileURLToPath(import.meta.url)
 const [root = join(homedir(), '.claude'), mode] = process.argv.slice(2)
@@ -63,60 +64,71 @@ const SKILL_GROUPS = {
   'built-in': 'Built-in skills',
 }
 
-async function skills(catalog) {
+/** The switch of an item that `disabled.json` lists by name. */
+const switchFor = (disabled, kind, name) => ({ value: !disabled[kind].includes(name), act: { type: 'disable', kind, name } })
+
+/** Your skill folders, then every other skill that a session saw. */
+async function skills(catalog, disabled) {
   const items = []
-  for (const isOn of [true, false]) {
-    const dir = isOn ? DIRS.skills : join(DIRS.skills, DISABLED)
-    for (const folder of await list(dir, true)) {
-      const md = await readText(at(dir, folder, 'SKILL.md'))
-      const meta = md ? frontmatter(md) : await readJson(at(dir, folder, 'skill.json'), {})
-      const name = meta.name ?? folder
-      const source = md ? 'userSettings' : (catalog.skills?.[name]?.source ?? meta.source)
-      items.push({
-        title: name,
-        description: meta.description || catalog.skills?.[name]?.description || '',
-        group: SKILL_GROUPS[source] ?? 'Other skills',
-        value: isOn,
-        act: { type: 'move', dir: DIRS.skills, name: folder },
-        ...(md && { edit: { path: join(dir, folder, 'SKILL.md'), text: md.replace(/\r\n/g, '\n') } }),
-      })
-    }
+  const yours = new Set()
+  for (const folder of await list(DIRS.skills, true)) {
+    const md = await readText(at(DIRS.skills, folder, 'SKILL.md'))
+    if (!md) continue
+    const meta = frontmatter(md)
+    const name = meta.name ?? folder
+    yours.add(name)
+    items.push({
+      title: name,
+      description: meta.description || catalog.skills?.[name]?.description || '',
+      group: SKILL_GROUPS.userSettings,
+      ...switchFor(disabled, 'skills', name),
+      edit: { path: join(DIRS.skills, folder, 'SKILL.md'), text: md.replace(/\r\n/g, '\n') },
+    })
+  }
+  for (const [name, entry] of Object.entries(catalog.skills ?? {})) {
+    if (yours.has(name)) continue
+    // Older versions called a skill yours when it had a skill.json folder, so a "yours" without a folder is worked out
+    // again the way the mod does it; the next session that lists the skill notes its real source.
+    const source = entry.source !== 'userSettings' ? entry.source : name.startsWith('anthropic-skills:') ? 'syncedSkills' : name.includes(':') ? 'plugin' : 'built-in'
+    items.push({ title: name, description: entry.description ?? '', group: SKILL_GROUPS[source] ?? 'Other skills', ...switchFor(disabled, 'skills', name) })
   }
   return grouped(items, Object.values(SKILL_GROUPS))
 }
 
-/** Rows for the Markdown files of a folder and its `disabled` subfolder. */
+/** Rows for the Markdown files of a folder. */
 async function files(dir, group, describe) {
   const items = []
-  for (const isOn of [true, false]) {
-    const from = isOn ? dir : join(dir, DISABLED)
-    for (const name of (await list(from, false)).filter(name => name.endsWith('.md'))) {
-      const text = ((await readText(at(from, name))) ?? '').replace(/\r\n/g, '\n')
-      items.push({ group, value: isOn, act: { type: 'move', dir, name }, ...describe(name.slice(0, -3), text, from) })
-    }
+  for (const name of (await list(dir, false)).filter(name => name.endsWith('.md'))) {
+    const text = ((await readText(at(dir, name))) ?? '').replace(/\r\n/g, '\n')
+    items.push({ group, ...describe(name.slice(0, -3), text) })
   }
   return items
 }
 
-/** Edit info for a prompt file; `key` names its original text in the prompt defaults. */
 /** Edit info for a prompt file. Only an edit made in the window counts, as `prompt-edits.json` records it. */
 function editable(edits, key, path, text) {
   const isEdited = Object.hasOwn(edits, key)
   return { isEdited, edit: { path, text, key, isEdited } }
 }
 
-async function prompts(catalog, edits) {
-  const idOf = base => Object.keys(catalog.sections ?? {}).find(id => fileName(id) === base) ?? base
-  const sections = await files(DIRS.prompts, 'Sections', (base, text, from) => {
-    const id = idOf(base)
-    const { isEdited, edit } = editable(edits, base, join(from, `${base}.md`), text)
-    return { title: id, description: firstLine(text), badge: catalog.sections?.[id]?.scope, isEdited, order: catalog.sections?.[id]?.order ?? 999, edit }
+/** The id that a file name stands for: the catalog's id whose file name it is, else the name itself. */
+const idOf = (entries, base) => Object.keys(entries ?? {}).find(id => fileName(id) === base) ?? base
+
+async function prompts(catalog, edits, disabled) {
+  const sections = await files(DIRS.prompts, 'Sections', (base, text) => {
+    const id = idOf(catalog.sections, base)
+    const { isEdited, edit } = editable(edits, base, join(DIRS.prompts, `${base}.md`), text)
+    return { title: id, description: firstLine(text), badge: catalog.sections?.[id]?.scope, isEdited, order: catalog.sections?.[id]?.order ?? 999, edit, ...switchFor(disabled, 'sections', id) }
   })
-  const reminders = await files(DIRS.reminders, 'Reminders', (base, text, from) => ({
-    title: base,
-    description: firstLine(text),
-    ...editable(edits, `${DIRS.reminders}/${base}`, join(from, `${base}.md`), text),
-  }))
+  const reminders = await files(DIRS.reminders, 'Reminders', (base, text) => {
+    const type = idOf(catalog.reminders, base)
+    return {
+      title: type,
+      description: firstLine(text),
+      ...editable(edits, `${DIRS.reminders}/${base}`, join(DIRS.reminders, `${base}.md`), text),
+      ...switchFor(disabled, 'reminders', type),
+    }
+  })
   return grouped([...sections, ...reminders], ['Sections', 'Reminders'])
 }
 
@@ -149,19 +161,18 @@ async function plugins(settings) {
   return grouped(items)
 }
 
-async function hooks(settings) {
+async function hooks(settings, disabled) {
   const describe = group => (group.hooks ?? []).map(hook => hook.command ?? hook.url ?? hook.prompt ?? hook.type).join('  ·  ')
-  const row = (event, group, isOn) => ({
+  const row = (event, group, isOn, id = hash([event, group])) => ({
     title: group.matcher ? `${event} · ${group.matcher}` : event,
     description: describe(group),
     group: 'Settings hooks',
     value: isOn,
-    act: { type: 'hook', event, id: hash([event, group]) },
+    act: { type: 'hook', event, id },
   })
   const items = Object.entries(settings.hooks ?? {}).flatMap(([event, groups]) => groups.map(group => row(event, group, true)))
-  for (const name of await list(join(DIRS.hooks, DISABLED), false)) {
-    const saved = await readJson(at(DIRS.hooks, DISABLED, name), undefined)
-    if (saved) items.push(row(saved.event, saved.group, false))
+  for (const [id, saved] of Object.entries(disabled.hooks)) {
+    if (saved?.group && typeof saved.group === 'object') items.push(row(saved.event, saved.group, false, id))
   }
   const all = {
     title: 'Run hooks',
@@ -173,12 +184,11 @@ async function hooks(settings) {
   return grouped([all, ...items], ['All hooks', 'Settings hooks'])
 }
 
-const markerPath = (dir, name) => at(dir, DISABLED, `${fileName(name)}.json`)
-
-async function agents(catalog) {
+async function agents(catalog, disabled) {
   const items = await files(DIRS.agents, 'Your subagents', (base, text) => {
     const meta = frontmatter(text)
-    return { title: meta.name ?? base, description: meta.description ?? '' }
+    const name = meta.name ?? base
+    return { title: name, description: meta.description ?? '', ...switchFor(disabled, 'agents', name) }
   })
   const fileNames = new Set(items.map(item => item.title))
   for (const [name, entry] of Object.entries(catalog.agents ?? {})) {
@@ -187,8 +197,7 @@ async function agents(catalog) {
       title: name,
       description: entry.description ?? '',
       group: entry.source === 'built-in' ? 'Built-in subagents' : entry.source === 'plugin' ? 'Plugin subagents' : 'Other subagents',
-      value: !existsSync(markerPath(DIRS.agents, name)),
-      act: { type: 'marker', dir: DIRS.agents, name },
+      ...switchFor(disabled, 'agents', name),
     })
   }
   return grouped(items, ['Your subagents', 'Built-in subagents', 'Plugin subagents'])
@@ -196,7 +205,7 @@ async function agents(catalog) {
 
 const COMMAND_GROUPS = { builtin: 'Built-in commands', user: 'Your commands', plugin: 'Plugin commands', mcp: 'MCP prompts' }
 
-function commands(catalog) {
+function commands(catalog, disabled) {
   const skillNames = new Set(Object.keys(catalog.skills ?? {}))
   const items = Object.entries(catalog.commands ?? {})
     .filter(([name]) => !skillNames.has(name) && name !== 'settings-manager')
@@ -204,8 +213,7 @@ function commands(catalog) {
       title: `/${name}`,
       description: entry.description ?? '',
       group: COMMAND_GROUPS[entry.source] ?? 'Other commands',
-      value: !existsSync(markerPath(DIRS.commands, name)),
-      act: { type: 'marker', dir: DIRS.commands, name },
+      ...switchFor(disabled, 'commands', name),
     }))
   return grouped(items, Object.values(COMMAND_GROUPS))
 }
@@ -307,21 +315,22 @@ function env(settings) {
 }
 
 async function model() {
-  const [settings, catalog, edits] = await Promise.all([
+  const [settings, catalog, edits, disabled] = await Promise.all([
     readJson(at('settings.json'), {}),
     readJson(at(DIRS.data, FILES.catalog), {}),
     readJson(at(DIRS.data, FILES.edits), {}),
+    readDisabled(),
   ])
   const section = async (id, title, folder, note, groups, empty) => ({ id, title, folder, note, empty, groups: await groups })
   return Promise.all([
-    section('skills', 'Skills', DIRS.skills, 'Turned-off skills move to skills/disabled. Changes reach Claude in new sessions.', skills(catalog)),
-    section('prompts', 'System prompt', DIRS.prompts, 'Each section is a file in prompts. Edit a section to change what Claude reads.', prompts(catalog, edits)),
-    section('agents', 'Subagents', DIRS.agents, 'Subagent types that Claude can start.', agents(catalog)),
-    section('commands', 'Commands', DIRS.commands, 'Turned-off commands are hidden and refused.', commands(catalog)),
+    section('skills', 'Skills', DIRS.skills, 'Turned-off skills are listed in settings-manager/disabled.json. Changes reach Claude in new sessions.', skills(catalog, disabled)),
+    section('prompts', 'System prompt', DIRS.prompts, 'Each section is a file in prompts. Edit a section to change what Claude reads.', prompts(catalog, edits, disabled)),
+    section('agents', 'Subagents', DIRS.agents, 'Subagent types that Claude can start.', agents(catalog, disabled)),
+    section('commands', 'Commands', DIRS.commands, 'Turned-off commands are hidden and refused.', commands(catalog, disabled)),
     section('tools', 'Tools', '', 'Turning a tool off adds it to permissions.deny in settings.json.', tools(catalog, settings)),
     section('mcp', 'MCP', '', 'Turning a server or tool off adds it to permissions.deny in settings.json.', mcp(catalog, settings), 'No session has seen an MCP server yet.'),
     section('plugins', 'Plugins', 'plugins', 'Plugins and mods load in new sessions, or after /reload-plugins.', plugins(settings)),
-    section('hooks', 'Hooks', DIRS.hooks, 'Turned-off settings hooks move to hooks/disabled.', hooks(settings)),
+    section('hooks', 'Hooks', '', 'Turned-off settings hooks move from settings.json to settings-manager/disabled.json.', hooks(settings, disabled)),
     section('general', 'General', '', 'Settings from settings.json.', general(settings)),
     section('env', 'Environment', '', 'Variables from env in settings.json. Claude Code sets them in new sessions.', env(settings), 'No variables are set.'),
   ])
@@ -408,6 +417,91 @@ async function markEdited(change, key, isEdited) {
   await write(change, path, JSON.stringify(edits, null, 2) + '\n')
 }
 
+const disabledFile = at(DIRS.data, FILES.disabled)
+const readDisabled = async () => parseDisabled(await readText(disabledFile))
+
+/** Reads `disabled.json`, applies `edit` and writes it back. */
+async function editDisabled(change, edit) {
+  const disabled = await readDisabled()
+  edit(disabled)
+  for (const kind of DISABLED_KINDS) disabled[kind].sort((a, b) => a.localeCompare(b))
+  await write(change, disabledFile, JSON.stringify(disabled, null, 2) + '\n')
+}
+
+/**
+ * Moves the on/off state of the old layout into `disabled.json`: the `disabled` subfolders, the marker files
+ * in them, and the folders that held only `skill.json` for skills that were not yours. Your own skill, subagent
+ * and command files go back to their folders, unless a file of that name is already there; then they stay put.
+ * Runs when the server starts, and does nothing once the old layout is gone.
+ */
+async function migrate() {
+  const entries = async dir => (await fs.readdir(at(dir), { withFileTypes: true }).catch(() => [])).map(entry => ({ name: entry.name, isDir: entry.isDirectory() }))
+  const onlySkillJson = async folder => {
+    const names = (await entries(folder)).map(entry => entry.name)
+    return names.length === 1 && names[0] === 'skill.json'
+  }
+  const fakeSkills = []
+  for (const { name, isDir } of await entries(DIRS.skills)) if (isDir && name !== DISABLED && (await onlySkillJson(join(DIRS.skills, name)))) fakeSkills.push(name)
+  const legacy = [DIRS.skills, DIRS.prompts, DIRS.reminders, DIRS.agents, DIRS.commands, DIRS.hooks].map(dir => join(dir, DISABLED))
+  if (!fakeSkills.length && !legacy.some(dir => existsSync(at(dir)))) return
+
+  const catalog = await readJson(at(DIRS.data, FILES.catalog), {})
+  const disabled = await readDisabled()
+  const add = (kind, name) => void (disabled[kind].includes(name) || disabled[kind].push(name))
+  /** Puts a file or folder of yours back, or leaves it where it is when the name is taken. */
+  const putBack = async (from, to) => {
+    if (!existsSync(at(to))) await fs.rename(at(from), at(to))
+  }
+  const remove = path => fs.rm(at(path), { recursive: true, force: true })
+
+  for (const folder of fakeSkills) await remove(join(DIRS.skills, folder))
+  const skillsOff = join(DIRS.skills, DISABLED)
+  for (const { name: folder, isDir } of await entries(skillsOff)) {
+    if (!isDir) continue
+    const md = await readText(at(skillsOff, folder, 'SKILL.md'))
+    if (md) {
+      add('skills', frontmatter(md).name ?? folder)
+      await putBack(join(skillsOff, folder), join(DIRS.skills, folder))
+    } else if (await onlySkillJson(join(skillsOff, folder))) {
+      add('skills', (await readJson(at(skillsOff, folder, 'skill.json'), {})).name ?? folder)
+      await remove(join(skillsOff, folder))
+    }
+  }
+  // A prompt file holds Claude Code's text, which the mod writes again, so a copy that is in the way is deleted.
+  for (const [dir, kind] of [[DIRS.prompts, 'sections'], [DIRS.reminders, 'reminders']]) {
+    for (const { name, isDir } of await entries(join(dir, DISABLED))) {
+      if (isDir || !name.endsWith('.md')) continue
+      add(kind, idOf(catalog[kind], name.slice(0, -3)))
+      const [from, to] = [join(dir, DISABLED, name), join(dir, name)]
+      if (existsSync(at(to))) await remove(from)
+      else await fs.rename(at(from), at(to))
+    }
+  }
+  for (const [dir, kind] of [[DIRS.agents, 'agents'], [DIRS.commands, 'commands']]) {
+    for (const { name, isDir } of await entries(join(dir, DISABLED))) {
+      if (isDir) continue
+      const path = join(dir, DISABLED, name)
+      if (name.endsWith('.md')) {
+        add(kind, kind === 'agents' ? (frontmatter((await readText(at(path))) ?? '').name ?? name.slice(0, -3)) : name.slice(0, -3))
+        await putBack(path, join(dir, name))
+      } else if (name.endsWith('.json')) {
+        add(kind, (await readJson(at(path), {})).name ?? name.slice(0, -5))
+        await remove(path)
+      }
+    }
+  }
+  for (const { name, isDir } of await entries(join(DIRS.hooks, DISABLED))) {
+    const saved = !isDir && name.endsWith('.json') && (await readJson(at(DIRS.hooks, DISABLED, name), undefined))
+    if (!saved?.group || typeof saved.group !== 'object') continue
+    disabled.hooks[hash([saved.event, saved.group])] = { event: saved.event, group: saved.group }
+    await remove(join(DIRS.hooks, DISABLED, name))
+  }
+  for (const kind of DISABLED_KINDS) disabled[kind].sort((a, b) => a.localeCompare(b))
+  await writeJson(disabledFile, disabled)
+  // A folder that is empty now goes; one that still holds a file of yours stays.
+  for (const dir of legacy) await fs.rmdir(at(dir)).catch(() => {})
+}
+
 /** Reads settings.json, applies `edit` and writes it back. A file with a JSON error is left as it is. */
 async function editSettings(change, edit) {
   const file = at('settings.json')
@@ -429,16 +523,13 @@ const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 /** Each action changes files on disk. `change` collects what it changes, so the change can be undone. */
 const ACTIONS = {
-  async move({ dir, name }, isOn, change) {
-    const [on, off] = [inside(dir, name), inside(dir, DISABLED, name)]
-    const [from, to] = isOn ? [off, on] : [on, off]
-    await move(from, to)
-    change.moves.push({ from, to })
-  },
-  async marker({ dir, name }, isOn, change) {
-    const path = inside(dir, DISABLED, `${fileName(name)}.json`)
-    await change.track(path)
-    await (isOn ? fs.rm(path, { force: true }) : writeJson(path, { name }))
+  /** Turns a skill, section, reminder, subagent or command on or off by name in `disabled.json`. */
+  async disable({ kind, name }, isOn, change) {
+    if (!DISABLED_KINDS.includes(kind) || typeof name !== 'string' || !name) throw new Error('Settings Manager does not know this item. Reload the window.')
+    await editDisabled(change, disabled => {
+      disabled[kind] = disabled[kind].filter(item => item !== name)
+      if (!isOn) disabled[kind].push(name)
+    })
   },
   async setting({ key, invert, number }, value, change) {
     const next = invert ? !value : number && value !== '' ? Number(value) : value
@@ -465,14 +556,13 @@ const ACTIONS = {
       if (!Object.keys(vars).length) delete settings.env
     })
   },
+  /** Moves a settings hook between settings.json and the `hooks` of `disabled.json`, which keeps it to turn back on. */
   async hook({ event, id }, isOn, change) {
-    const saved = inside(DIRS.hooks, DISABLED, `${id}.json`)
-    await change.track(saved)
     if (isOn) {
-      const { group } = (await readJson(saved, undefined)) ?? {}
-      if (!group || typeof group !== 'object') throw new Error('This hook is no longer saved in hooks/disabled. Reload the window.')
+      const group = (await readDisabled()).hooks[id]?.group
+      if (!group || typeof group !== 'object') throw new Error('This hook is no longer saved in disabled.json. Reload the window.')
       await editSettings(change, settings => ((settings.hooks ??= {})[event] ??= []).push(group))
-      return fs.rm(saved)
+      return editDisabled(change, disabled => void delete disabled.hooks[id])
     }
     let group
     await editSettings(change, settings => {
@@ -482,7 +572,7 @@ const ACTIONS = {
       settings.hooks[event] = groups.filter(item => item !== group)
       if (!settings.hooks[event].length) delete settings.hooks[event]
     })
-    await writeJson(saved, { event, group })
+    await editDisabled(change, disabled => void (disabled.hooks[id] = { event, group }))
   },
   async edit({ path, text, key }, _value, change) {
     await write(change, inside(path), text)
@@ -617,6 +707,8 @@ const DIST = new URL('./dist/', import.meta.url)
 const isAsset = path => /^\/(assets\/)?[\w.-]+\.(js|css|svg|png|woff2)$/.test(path)
 
 async function serve() {
+  // A failed move is kept in a file to read, and the server starts anyway.
+  await migrate().catch(error => writeJson(at(DIRS.data, 'migration-error.json'), { message: String(error?.stack ?? error) }))
   const token = randomBytes(16).toString('hex')
   const page = await fs.readFile(new URL('index.html', DIST), 'utf8')
   let lastSeen = Date.now()
@@ -660,4 +752,4 @@ async function serve() {
   if (!isWindows) setInterval(() => Date.now() - lastSeen > 60000 && process.exit(0), 5000)
 }
 
-await (mode === '--serve' ? serve() : launch(mode !== '--tray'))
+await (mode === '--serve' ? serve() : mode === '--migrate' ? migrate() : launch(mode !== '--tray'))

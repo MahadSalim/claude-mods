@@ -1,5 +1,5 @@
 import type { EngineInterface as $, Register } from 'claude-code'
-import { DIRS, DISABLED, FILES, fileName, frontmatter, join } from '../app/shared.mjs'
+import { DIRS, DISABLED_KINDS, FILES, fileName, frontmatter, join, parseDisabled } from '../app/shared.mjs'
 
 type Entry = { description?: string; source?: string; scope?: string; order?: number; mcp?: boolean; plugin?: string }
 const KINDS = ['skills', 'sections', 'reminders', 'agents', 'commands', 'tools'] as const
@@ -44,40 +44,29 @@ async function entries($: $, dir: string) {
   return $.fs.list(at(dir)).catch(() => [])
 }
 
-/** Reads the `name` of each item in a folder: Markdown frontmatter, a JSON `name`, or the file name. */
-async function names($: $, dir: string, kind: 'dir' | 'file') {
-  const items = (await entries($, dir)).filter(item => item.kind === kind && item.name !== DISABLED)
-  return Promise.all(
-    items.map(async ({ name }) => {
-      const base = name.replace(/\.(md|json)$/, '')
-      const folder = kind === 'dir' ? join(dir, name) : dir
-      const md = kind === 'dir' ? 'SKILL.md' : name.endsWith('.md') ? name : undefined
-      const json = kind === 'dir' ? 'skill.json' : name.endsWith('.json') ? name : undefined
-      const text = md && (await $.fs.read(at(folder, md)).catch(() => undefined))
-      if (text) return frontmatter(text).name ?? base
-      return (json && (await readJson<{ name?: string }>($, at(folder, json), {})).name) || base
+/** The names of your own skills: each folder in `skills` that holds a SKILL.md, by its frontmatter `name` or the folder name. */
+async function yourSkills($: $) {
+  const folders = (await entries($, DIRS.skills)).filter(item => item.kind === 'dir')
+  const names = await Promise.all(
+    folders.map(async ({ name }) => {
+      const text = await $.fs.read(at(DIRS.skills, name, 'SKILL.md')).catch(() => undefined)
+      return text === undefined ? undefined : (frontmatter(text).name ?? name)
     }),
   )
+  return names.filter((name): name is string => name !== undefined)
 }
 
+/** Reads what is turned off from `disabled.json`, the edit records and your skill names. */
 async function refresh($: $) {
-  const fileBases = async (dir: string) =>
-    (await entries($, dir)).filter(item => item.kind === 'file' && item.name.endsWith('.md')).map(item => item.name.slice(0, -3))
-  edits = await readJson($, at(DIRS.data, FILES.edits), {})
-  const [onSkills, offSkills, offSections, offReminders, offAgents, offCommands] = await Promise.all([
-    names($, DIRS.skills, 'dir'),
-    names($, join(DIRS.skills, DISABLED), 'dir'),
-    fileBases(join(DIRS.prompts, DISABLED)),
-    fileBases(join(DIRS.reminders, DISABLED)),
-    names($, join(DIRS.agents, DISABLED), 'file'),
-    names($, join(DIRS.commands, DISABLED), 'file'),
+  const [skills, disabledText, editsRead] = await Promise.all([
+    yourSkills($),
+    $.fs.read(at(DIRS.data, FILES.disabled)).catch(() => undefined),
+    readJson($, at(DIRS.data, FILES.edits), {}),
   ])
-  known.skills = new Set([...onSkills, ...offSkills])
-  off.skills = new Set(offSkills)
-  off.sections = new Set(offSections)
-  off.reminders = new Set(offReminders)
-  off.agents = new Set(offAgents)
-  off.commands = new Set(offCommands)
+  const disabled = parseDisabled(disabledText)
+  edits = editsRead
+  known.skills = new Set(skills)
+  for (const kind of DISABLED_KINDS) off[kind] = new Set(disabled[kind])
 }
 
 function note($: $, kind: keyof Catalog, name: string, entry: Entry) {
@@ -115,8 +104,9 @@ async function scan($: $) {
 
 async function skillSource($: $, name: string) {
   if (known.skills.has(name)) return 'userSettings'
+  // Older versions called a skill yours when it had a skill.json folder, so that source is worked out again.
   const seen = catalog.skills[name]?.source
-  if (seen) return seen
+  if (seen && seen !== 'userSettings') return seen
   if (name.includes(':')) return name.startsWith('anthropic-skills:') ? 'syncedSkills' : 'plugin'
   return (await $.fs.exists(join('.claude', 'skills', name, 'SKILL.md'))) ? 'projectSettings' : 'built-in'
 }
@@ -137,15 +127,9 @@ function filterListing(text: string) {
   return { text: kept.join('\n'), seen }
 }
 
-/** Gives each skill without a folder of its own a folder that holds `skill.json`. */
+/** Notes each skill in the listing in the catalog, where the window finds it. */
 async function noteSkills($: $, seen: { name: string; description: string }[]) {
-  for (const { name, description } of seen) {
-    const source = await skillSource($, name)
-    note($, 'skills', name, { description: brief(description), source })
-    if (known.skills.has(name)) continue
-    known.skills.add(name)
-    await $.fs.write(at(DIRS.skills, fileName(name), 'skill.json'), JSON.stringify({ name, description, source }, null, 2))
-  }
+  for (const { name, description } of seen) note($, 'skills', name, { description: brief(description), source: await skillSource($, name) })
 }
 
 /**
@@ -211,8 +195,8 @@ export const register: Register = on => {
     const sections = []
     for (const [order, section] of result.sections.entries()) {
       note($, 'sections', section.id, { scope: section.scope, order })
+      if (off.sections.has(section.id)) continue
       const file = fileName(section.id)
-      if (off.sections.has(file)) continue
       sections.push({ ...section, text: await promptText($, file, DIRS.prompts, unixLines(section.text)) })
     }
     return { sections }
@@ -226,12 +210,13 @@ export const register: Register = on => {
       await noteSkills($, seen)
       return { text }
     }
-    // Only Claude Code's own text can be edited or turned off; the person's words and other authors' text pass as they are.
-    if (PERSONS_WORDS.has(e.type) || e.origin?.kind !== 'engine') return next(e)
+    // The person's words always pass as they are. Other text can be turned off, but only Claude Code's own fixed text
+    // is saved and can be edited: text from hooks and plugins, and file contents, pass as they are.
+    if (PERSONS_WORDS.has(e.type)) return next(e)
+    if (off.reminders.has(e.type)) return { text: null }
     const file = fileName(e.type)
-    if (off.reminders.has(file)) return { text: null }
     const result = await next(e)
-    if (result.text === null || FILE_CONTENTS.has(e.type)) return result
+    if (result.text === null || FILE_CONTENTS.has(e.type) || e.origin?.kind !== 'engine') return result
     note($, 'reminders', e.type, { description: brief(result.text) })
     return { text: await promptText($, `${DIRS.reminders}/${file}`, DIRS.reminders, unixLines(result.text)) }
   })
